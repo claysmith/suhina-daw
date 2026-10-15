@@ -71,8 +71,10 @@ CHAPTERS = [
      "selecting a slot, copying clips between the arrangement and slots (keys, menus, a drag over "
      "the view switch); "
      "scenes inserted, duplicated, deleted and renamed from a menu, with a tempo and time signature "
-     "each. A launched clip is selected and the detail area shows its follow-action controls. "
-     "Missing capture-and-insert scene, moving clips between slots, select-on-launch options."),
+     "each. A launched clip is selected and the detail area shows its follow-action controls; a "
+     "double-click on an empty MIDI slot creates a clip, and the Delete key takes a selected "
+     "slot's clip off its slot. Missing capture-and-insert scene, moving clips between slots, "
+     "select-on-launch options."),
     (8, "Clip View", 34, 0.15, "started",
      "Detail area shows clip properties and, for a MIDI clip in the Arrangement, a first piano roll "
      "(docs/spec/ui-clip-editor.md): keys, ruler, note grid, velocity lane, zoom and scroll, a toolbar of "

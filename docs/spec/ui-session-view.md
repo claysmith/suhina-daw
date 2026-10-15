@@ -96,10 +96,14 @@ Each cell is a slot for one clip.
 |---|---|---|
 | Empty, with stop button | stop control | stops the track at the next quantisation point; double-click creates an empty clip (a MIDI track) |
 | Empty, without stop button | nothing; double-click creates an empty clip (a MIDI track) | nothing (**Suhina:** selects it) |
-| Clip, stopped | clip colour, clip name, launch control | launches the clip; **Suhina:** and selects it |
+| Clip, stopped | the play glyph in the clip's colour mark, clip name | launches the clip; **Suhina:** and selects it |
 | Clip, queued | launch control in a pending (blinking) state until the quantisation point | |
-| Clip, playing | the play arrow in the clip's colour mark (**Suhina:** the stop square while the pointer is over it), progress through the clip | stops the clip at the next quantisation point |
+| Clip, playing | the stop glyph in the clip's colour mark, progress through the clip | stops the clip at the next quantisation point |
 | Clip, recording | recording state | |
+
+**Suhina:** the Delete key (or Backspace) takes a selected slot's clip off its slot, like a
+selected arrangement clip's (`clip.delete` with the slot's track and scene); one undo puts it
+back. The detail area falls back to the track's devices.
 
 Double-clicking an empty slot on a MIDI track creates an empty one-bar clip and opens it in the
 detail area's piano roll. Double-clicking a clip opens it. Dropping a file or clip on a slot

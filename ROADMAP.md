@@ -235,6 +235,9 @@ From Live Sets we authored ourselves in Live 12.4 ([format spec](docs/spec/als-f
   Ctrl+V on the selected clip or slot (`clip.copy` and `clip.paste` take `scene`), or a drag held
   over the other view's name in the control bar until the view switches
   ([spec](docs/spec/clip-launching.md) › Clips between the arrangement and the slots).
+- A double-click on an empty slot of a MIDI track creates an empty one-bar clip and opens it in
+  the piano roll; a playing slot's click stops the clip, and the Delete key takes a selected
+  slot's clip off its slot.
 - A metronome (`transport.setMetronome`, off by default): a click on every beat while the
   transport runs, higher on the first beat of a bar, following tempo edits and scene tempos.
   Count-in comes with recording.

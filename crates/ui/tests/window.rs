@@ -2603,3 +2603,27 @@ fn a_double_click_on_an_empty_slot_creates_a_clip_and_opens_its_piano_roll() {
     harness.run();
     assert!(harness.query_by_label("Stop Keys (scene 1)").is_some(), "the slot is empty again");
 }
+
+#[test]
+fn the_delete_key_takes_a_selected_slot_clip_off_its_slot() {
+    // Frames close enough together for a double-click.
+    let mut harness = window_with_step(demo_app(), 1.0 / 60.0);
+    // The demo's Keys has an empty slot (with a stop button) in scene 1: a double-click creates
+    // an empty clip there and selects it.
+    let at = harness.get_by_label("Stop Keys (scene 1)").rect().center();
+    harness.hover_at(at);
+    harness.run();
+    harness.drag_at(at);
+    harness.drop_at(at);
+    harness.step();
+    harness.drag_at(at);
+    harness.drop_at(at);
+    harness.step();
+    harness.run();
+    harness.get_by_label("Launch clip on Keys (scene 1)");
+    // Delete takes the selected clip off its slot: the empty slot's stop control is back.
+    harness.key_press(Key::Delete);
+    harness.run();
+    assert!(harness.query_by_label("Stop Keys (scene 1)").is_some(), "the slot is empty again");
+    assert!(harness.query_by_label("Launch clip on Keys (scene 1)").is_none(), "the clip is gone");
+}

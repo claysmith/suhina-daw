@@ -657,3 +657,21 @@ fn a_new_clip_is_an_empty_looping_bar_in_an_empty_slot() {
         "an audio track takes no MIDI clips"
     );
 }
+
+#[test]
+fn a_slot_clip_is_deleted_by_scene_and_undo_brings_it_back() {
+    let mut session = Session::new(project());
+    run(&mut session, "clip.new", json!({ "track": 3, "scene": 2 })).unwrap();
+    // Deleted by scene: the slot is empty again.
+    let deleted = run(&mut session, "clip.delete", json!({ "track": 3, "scene": 2 })).unwrap();
+    assert_eq!(deleted["deleted"], json!(2));
+    let column = session.project().launcher.columns.iter().find(|c| c.track == TrackId(3)).unwrap();
+    assert!(column.slots[1].clip.is_none());
+    // An empty slot is refused, and so is an index next to the scene.
+    assert!(run(&mut session, "clip.delete", json!({ "track": 3, "scene": 2 })).is_err());
+    assert!(run(&mut session, "clip.delete", json!({ "track": 3, "scene": 2, "index": 0 })).is_err());
+    // One undo puts the clip back.
+    run(&mut session, "edit.undo", json!({})).unwrap();
+    let column = session.project().launcher.columns.iter().find(|c| c.track == TrackId(3)).unwrap();
+    assert!(column.slots[1].clip.is_some());
+}
