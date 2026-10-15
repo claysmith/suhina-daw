@@ -127,7 +127,7 @@ fn chevron(painter: &egui::Painter, center: Pos2, open: bool, color: Color32) {
     painter.add(egui::Shape::line(points, Stroke::new(1.1, color)));
 }
 
-fn play_glyph(painter: &egui::Painter, center: Pos2, playing: bool, color: Color32) {
+pub(crate) fn play_glyph(painter: &egui::Painter, center: Pos2, playing: bool, color: Color32) {
     if playing {
         painter.rect_filled(Rect::from_center_size(center, Vec2::splat(7.0)), 0.0, color);
     } else {

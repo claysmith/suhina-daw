@@ -65,6 +65,9 @@ pub struct Column {
     pub kind: ColumnKind,
     /// Index into the launcher's columns and the monitor's, if the track has slots.
     pub launcher: Option<usize>,
+    /// The track takes MIDI clips (its content kinds say notes and not audio): an empty slot
+    /// creates one on a double-click.
+    pub notes: bool,
     /// One per scene; empty for a return track.
     pub slots: Vec<Slot>,
     /// The track's stop is queued for the next quantisation point.
@@ -209,6 +212,7 @@ impl Grid {
                 color: track.color.unwrap_or_else(|| default_track_colour(index)),
                 kind,
                 launcher,
+                notes: track.content.notes && !track.content.audio,
                 slots,
                 stop_queued: queued == Some(Queued::Stop),
                 mute: channel.is_some_and(|c| c.mute),

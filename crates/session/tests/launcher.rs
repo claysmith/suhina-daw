@@ -623,3 +623,37 @@ fn a_loop_turned_on_while_playing_repeats_its_span() {
     advance(&mut renderer, 1);
     assert_eq!(run(&mut session, "launcher.state", json!({})).unwrap()["position"], "1.3");
 }
+
+#[test]
+fn a_new_clip_is_an_empty_looping_bar_in_an_empty_slot() {
+    let mut session = Session::new(project());
+    let made = run(&mut session, "clip.new", json!({ "track": 3, "scene": 2 })).unwrap();
+    assert_eq!((made["scene"].clone(), made["length"].clone()), (json!(2), json!(4.0)), "one bar of 4/4");
+    let p = session.project();
+    let column = p.launcher.columns.iter().find(|c| c.track == TrackId(3)).unwrap();
+    let clip = column.slots[1].clip.as_ref().unwrap();
+    let content = p.content(clip.content).unwrap();
+    assert!(content.name.is_empty());
+    assert!(content.lanes.iter().all(|l| matches!(&l.data, LaneData::Notes(notes) if notes.is_empty())));
+    assert_eq!(clip.loop_range, Some(LoopRange { start: 0.0, end: 4.0 }));
+    // The slot had a clip already: refused.
+    assert!(run(&mut session, "clip.new", json!({ "track": 3, "scene": 2 })).is_err());
+    // A name and a length of its own, after undoing the first.
+    run(&mut session, "edit.undo", json!({})).unwrap();
+    let made = run(&mut session, "clip.new", json!({ "track": 3, "scene": 2, "name": "Bits", "length": 2.5 })).unwrap();
+    assert_eq!((made["name"].clone(), made["length"].clone()), (json!("Bits"), json!(2.5)));
+    // And one undo takes it off again.
+    run(&mut session, "edit.undo", json!({})).unwrap();
+    let column = session.project().launcher.columns.iter().find(|c| c.track == TrackId(3)).unwrap();
+    assert!(column.slots[1].clip.is_none());
+    // A length that is not beats is refused.
+    assert!(run(&mut session, "clip.new", json!({ "track": 3, "scene": 2, "length": 0 })).is_err());
+    // An audio track takes no MIDI clips.
+    let mut p = project();
+    p.tracks[0].content = ContentKinds { notes: false, audio: true };
+    let mut session = Session::new(p);
+    assert!(
+        run(&mut session, "clip.new", json!({ "track": 1, "scene": 2 })).is_err(),
+        "an audio track takes no MIDI clips"
+    );
+}

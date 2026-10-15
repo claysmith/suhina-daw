@@ -4,8 +4,8 @@
 use serde_json::{Value, json};
 use suhina_engine::{ColumnStatus, LaunchCommand, MAX_START_BEAT, Quantization, Queued};
 use suhina_model::{
-    ArrangementLane, Channel, ChannelId, ChannelRole, Clip, FadeCurve, FadeShape, LaneData, LoopRange, MAX_GROUP_DEPTH,
-    Marker, Project, Scene, Slot, TimeSignature, Track, TrackId,
+    ArrangementLane, Channel, ChannelId, ChannelRole, Clip, ClipContent, ContentId, ContentLane, FadeCurve, FadeShape,
+    LaneData, LoopRange, MAX_GROUP_DEPTH, Marker, Project, Scene, Slot, TimeSignature, Track, TrackId,
 };
 
 use crate::{CommandError, Session, automation, devices, files, follow, meters, notes, preview};
@@ -644,6 +644,18 @@ static COMMANDS: &[CommandSpec] = &[
         ],
         kind: CommandKind::Transport,
         run: meters::reset_clip,
+    },
+    CommandSpec {
+        id: "clip.new",
+        label: "Create an empty MIDI clip in a track's slot: one bar of no notes, ready for the piano roll",
+        params: &[
+            TRACK,
+            SCENE,
+            optional("name", ParamType::Text, "the clip's name (default: none)"),
+            optional("length", ParamType::Number, "beats, more than 0 (default: one bar of the time signature)"),
+        ],
+        kind: CommandKind::Edit,
+        run: new_clip,
     },
     CommandSpec {
         id: "clip.launch",
@@ -2492,6 +2504,61 @@ fn set_position(session: &mut Session, params: &Value) -> Result<Value, CommandE
     }
     send(session, LaunchCommand::SetPosition { beat: beats })?;
     Ok(json!({ "start_beat": beats }))
+}
+
+/// `clip.new`: an empty MIDI clip in a slot — one bar of no notes, looping, ready for the
+/// piano roll. MIDI tracks only: an audio clip's content references a file, so an empty one
+/// has nothing to reference (the empty audio clip waits for recording).
+fn new_clip(session: &mut Session, params: &Value) -> Result<Value, CommandError> {
+    let column = column_index(session.project(), params)?;
+    let scene = scene_index(session.project(), params)?;
+    let name = params.get("name").and_then(Value::as_str).map(str::trim).unwrap_or_default().to_string();
+    let length = match params.get("length") {
+        Some(value) => {
+            value.as_f64().filter(|l| l.is_finite() && *l > 0.0).ok_or("length must be beats, more than 0")?
+        }
+        None => {
+            let ts = session.project().transport.time_signature;
+            if ts.denominator == 0 { 4.0 } else { f64::from(ts.numerator.max(1)) * 4.0 / f64::from(ts.denominator) }
+        }
+    };
+    let project = session.project();
+    let track = project.launcher.columns.get(column).map(|c| c.track).ok_or("the track has no clip slots")?;
+    let row = project.tracks.iter().find(|t| t.id == track).ok_or("no such track")?;
+    if !row.content.notes || row.content.audio {
+        return Err(format!("{} does not take MIDI clips", track_name(project, track)).into());
+    }
+    if project.launcher.columns.get(column).and_then(|c| c.slots.get(scene)).is_some_and(|s| s.clip.is_some()) {
+        return Err(format!("the slot already has a clip (scene {})", scene + 1).into());
+    }
+    let project = &mut session.project;
+    let id =
+        ContentId(project.contents.iter().map(|c| c.id.0).max().unwrap_or(0).checked_add(1).ok_or("too many clips")?);
+    project.contents.push(ClipContent {
+        id,
+        name: name.clone(),
+        length,
+        lanes: vec![ContentLane { target: None, data: LaneData::Notes(Vec::new()) }],
+        extensions: Default::default(),
+    });
+    let clip = Clip {
+        content: id,
+        start: 0.0,
+        length,
+        offset: 0.0,
+        loop_range: Some(LoopRange { start: 0.0, end: length }),
+        enabled: true,
+        fade_in: 0.0,
+        fade_out: 0.0,
+        fade_in_curve: Default::default(),
+        fade_out_curve: Default::default(),
+        follow_action: Default::default(),
+        extensions: Default::default(),
+    };
+    let column_mut = project.launcher.columns.get_mut(column).ok_or("the track has no clip slots")?;
+    let slot = column_mut.slots.get_mut(scene).ok_or("the slot is missing")?;
+    slot.clip = Some(clip);
+    Ok(json!({ "track": track.0, "scene": scene + 1, "name": name, "length": length }))
 }
 
 fn launch_clip(session: &mut Session, params: &Value) -> Result<Value, CommandError> {

@@ -457,7 +457,14 @@ fn column_body(
             continue;
         }
         let number = scene + 1;
+        // An empty slot of a MIDI track answers a double-click with a new empty clip.
         let response = match slot.state {
+            SlotState::Empty if editable && column.notes => Some(widgets::button_area(
+                ui,
+                rect.intersect(clip),
+                id.with(scene),
+                format!("New clip on {} (scene {number})", column.name),
+            )),
             SlotState::Empty if editable => Some(widgets::button_area(
                 ui,
                 rect.intersect(clip),
@@ -473,7 +480,8 @@ fn column_body(
             )),
             _ => {
                 let name = if slot.name.is_empty() { "clip" } else { slot.name.as_str() };
-                let label = format!("Launch {name} on {} (scene {number})", column.name);
+                let verb = if slot.state == SlotState::Playing { "Stop" } else { "Launch" };
+                let label = format!("{verb} {name} on {} (scene {number})", column.name);
                 let sense = if editable { Sense::click_and_drag() } else { Sense::click() };
                 let response = ui.interact(rect.intersect(clip), id.with(scene), sense);
                 response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
@@ -486,7 +494,12 @@ fn column_body(
         let key = (column.track, scene);
         if let Some(response) = &response {
             if response.clicked() && slot.state != SlotState::Empty {
-                actions.push(Action::new("clip.launch", json!({ "track": column.track.0, "scene": number })));
+                // A playing clip stops on its click; anything else launches.
+                if slot.state == SlotState::Playing {
+                    actions.push(Action::new("track.stop", json!({ "track": column.track.0 })));
+                } else {
+                    actions.push(Action::new("clip.launch", json!({ "track": column.track.0, "scene": number })));
+                }
                 // A launched clip on a track is selected, so the detail area shows it.
                 if column.kind == ColumnKind::Track && has_clip {
                     state.select_slot(column.track, scene);
@@ -502,6 +515,15 @@ fn column_body(
                 }
                 response.context_menu(|ui| menus::slot_menu(ui, column.track, number, has_clip, can_paste, actions));
             }
+        }
+        // A double-click on an empty slot of a MIDI track creates an empty clip, one bar of
+        // no notes, and selects it: the detail area opens its piano roll.
+        if response.as_ref().is_some_and(|r| r.double_clicked())
+            && matches!(slot.state, SlotState::Empty | SlotState::EmptyStop)
+            && column.notes
+        {
+            actions.push(Action::new("clip.new", json!({ "track": column.track.0, "scene": number })));
+            state.select_slot(column.track, scene);
         }
         slot_cell(painter, rect, column, slot, hover, pulse, progress);
         if state.selected_slot == Some(key) {
@@ -583,6 +605,9 @@ fn slot_cell(
         SlotState::Playing => {
             painter.rect_filled(rect, 0.0, lane(theme::control_playing(), column.mute));
             painter.rect_filled(mark_rect(CLIP_MARK), 0.0, lane(track_color, column.mute));
+            // The play arrow in the mark; the stop square takes its place while the pointer
+            // is over the clip, where the click stops it.
+            crate::browser_view::play_glyph(painter, mark_rect(CLIP_MARK).center(), hover > 0.0, theme::text_primary());
             let text = if column.mute { theme::text_hint() } else { theme::text_playing() };
             widgets::text_in(painter, name_rect, Align2::LEFT_CENTER, &slot.name, font, text);
             let done = progress.unwrap_or(1.0).clamp(0.0, 1.0);

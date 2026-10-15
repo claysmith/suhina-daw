@@ -2577,3 +2577,29 @@ fn launching_a_clip_greys_the_arrangement_until_back_to_arrangement() {
     }
     assert!(!back, "the arrangement is back");
 }
+
+#[test]
+fn a_double_click_on_an_empty_slot_creates_a_clip_and_opens_its_piano_roll() {
+    // Frames close enough together for a double-click.
+    let mut harness = window_with_step(demo_app(), 1.0 / 60.0);
+    // The demo's Keys has an empty slot (with a stop button) in scene 1, high enough to be
+    // on screen; a double-click creates an empty clip there and selects it.
+    let at = harness.get_by_label("Stop Keys (scene 1)").rect().center();
+    harness.hover_at(at);
+    harness.run();
+    harness.drag_at(at);
+    harness.drop_at(at);
+    harness.step();
+    harness.drag_at(at);
+    harness.drop_at(at);
+    harness.step();
+    harness.run();
+    // The clip exists: the slot became a stopped clip of one bar, and the detail area opened
+    // its piano roll — empty.
+    harness.get_by_label("Launch clip on Keys (scene 1)");
+    harness.get_by_label("Piano roll, 0 notes");
+    // One undo takes the clip off again.
+    harness.key_press_modifiers(Modifiers::COMMAND, Key::Z);
+    harness.run();
+    assert!(harness.query_by_label("Stop Keys (scene 1)").is_some(), "the slot is empty again");
+}
