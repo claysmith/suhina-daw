@@ -598,6 +598,8 @@ fn slot_cell(
                 painter.rect_stroke(rect, 0.0, theme::hairline(accent), StrokeKind::Inside);
             } else {
                 painter.rect_filled(mark_rect(CLIP_MARK), 0.0, lane(mark, column.mute));
+                // The play glyph in the mark: the click launches the clip.
+                crate::browser_view::play_glyph(painter, mark_rect(CLIP_MARK).center(), false, theme::text_primary());
             }
             let text = if column.mute { theme::text_hint() } else { text };
             widgets::text_in(painter, name_rect, Align2::LEFT_CENTER, &slot.name, font, text);
@@ -605,9 +607,9 @@ fn slot_cell(
         SlotState::Playing => {
             painter.rect_filled(rect, 0.0, lane(theme::control_playing(), column.mute));
             painter.rect_filled(mark_rect(CLIP_MARK), 0.0, lane(track_color, column.mute));
-            // The play arrow in the mark; the stop square takes its place while the pointer
-            // is over the clip, where the click stops it.
-            crate::browser_view::play_glyph(painter, mark_rect(CLIP_MARK).center(), hover > 0.0, theme::text_primary());
+            // The stop square in the mark: the click stops the clip. A stopped clip's mark
+            // carries the play glyph the same way, for its click's launch.
+            crate::browser_view::play_glyph(painter, mark_rect(CLIP_MARK).center(), true, theme::text_primary());
             let text = if column.mute { theme::text_hint() } else { theme::text_playing() };
             widgets::text_in(painter, name_rect, Align2::LEFT_CENTER, &slot.name, font, text);
             let done = progress.unwrap_or(1.0).clamp(0.0, 1.0);
