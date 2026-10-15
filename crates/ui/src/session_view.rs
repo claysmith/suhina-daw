@@ -22,7 +22,7 @@ const PITCH: f32 = ROW + 1.0;
 /// Width of a group header's fold arrow.
 const FOLD_ARROW: f32 = 12.0;
 /// Mark sizes inside a slot.
-const CLIP_MARK: f32 = 6.0;
+const CLIP_MARK: f32 = 10.0;
 const EMPTY_MARK: f32 = 3.0;
 /// The play and stop glyphs inside a stopped or playing clip's 6 px mark, leaving colour
 /// visible around them.
@@ -600,30 +600,29 @@ fn slot_cell(
                 painter.rect_stroke(mark_rect(CLIP_MARK), 0.0, theme::hairline(accent), StrokeKind::Outside);
                 painter.rect_stroke(rect, 0.0, theme::hairline(accent), StrokeKind::Inside);
             } else {
-                painter.rect_filled(mark_rect(CLIP_MARK), 0.0, lane(mark, column.mute));
-                // The play glyph inside the mark: the click launches the clip.
-                crate::browser_view::play_glyph(
-                    painter,
-                    mark_rect(CLIP_MARK).center(),
-                    false,
-                    theme::text_primary(),
-                    SLOT_GLYPH,
-                );
+                // The mark is the shape its click does: a play triangle while stopped.
+                let box_rect = mark_rect(CLIP_MARK);
+                painter.add(egui::Shape::convex_polygon(
+                    vec![
+                        box_rect.center() + Vec2::new(-3.0, -5.0),
+                        box_rect.center() + Vec2::new(5.0, 0.0),
+                        box_rect.center() + Vec2::new(-3.0, 5.0),
+                    ],
+                    lane(mark, column.mute),
+                    egui::Stroke::NONE,
+                ));
             }
             let text = if column.mute { theme::text_hint() } else { text };
             widgets::text_in(painter, name_rect, Align2::LEFT_CENTER, &slot.name, font, text);
         }
         SlotState::Playing => {
             painter.rect_filled(rect, 0.0, lane(theme::control_playing(), column.mute));
-            painter.rect_filled(mark_rect(CLIP_MARK), 0.0, lane(track_color, column.mute));
-            // The stop square inside the mark: the click stops the clip. A stopped clip's mark
-            // carries the play glyph the same way, for its click's launch.
-            crate::browser_view::play_glyph(
-                painter,
-                mark_rect(CLIP_MARK).center(),
-                true,
-                theme::text_primary(),
-                SLOT_GLYPH,
+            // The mark is the shape its click does: a stop square while playing. A stopped
+            // clip's mark is the play triangle the same way, for its click's launch.
+            painter.rect_filled(
+                Rect::from_center_size(mark_rect(CLIP_MARK).center(), Vec2::splat(CLIP_MARK - 2.0)),
+                0.0,
+                lane(track_color, column.mute),
             );
             let text = if column.mute { theme::text_hint() } else { theme::text_playing() };
             widgets::text_in(painter, name_rect, Align2::LEFT_CENTER, &slot.name, font, text);

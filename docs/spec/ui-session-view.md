@@ -96,9 +96,9 @@ Each cell is a slot for one clip.
 |---|---|---|
 | Empty, with stop button | stop control | stops the track at the next quantisation point; double-click creates an empty clip (a MIDI track) |
 | Empty, without stop button | nothing; double-click creates an empty clip (a MIDI track) | nothing (**Suhina:** selects it) |
-| Clip, stopped | the play glyph in the clip's colour mark, clip name | launches the clip; **Suhina:** and selects it |
+| Clip, stopped | the play triangle in the track colour, clip name | launches the clip; **Suhina:** and selects it |
 | Clip, queued | launch control in a pending (blinking) state until the quantisation point | |
-| Clip, playing | the stop glyph in the clip's colour mark, progress through the clip | stops the clip at the next quantisation point |
+| Clip, playing | the stop square in the track colour, progress through the clip (the engine's beats since the launch, through the clip's loop) | stops the clip at the next quantisation point |
 | Clip, recording | recording state | |
 
 **Suhina:** the Delete key (or Backspace) takes a selected slot's clip off its slot, like a
