@@ -125,6 +125,15 @@ pub fn arrangement_clip(
 pub fn launcher_clip(project: &Project, track: TrackId, scene: usize, quantization: Quantization) -> Option<PianoClip> {
     let clip = project.launcher.columns.iter().find(|c| c.track == track)?.slots.get(scene)?.clip.as_ref()?;
     let mut piano = piano_clip_from(project, track, clip, quantization)?;
+    // A slot's clip plays from its launch, not from an arrangement position: its placement
+    // starts at the launch and never ends, so the beats since the launch map through it — the
+    // playhead and paste-at-playhead take those beats.
+    piano.placement = Placement {
+        start: 0.0,
+        length: f64::INFINITY,
+        offset: clip.offset,
+        loop_range: clip.loop_range.map(|l| (l.start, l.end)),
+    };
     piano.address = json!({ "track": track.0, "scene": scene + 1 });
     Some(piano)
 }
@@ -377,8 +386,9 @@ impl PianoRollState {
     }
 
     /// What a key does to the piano roll showing `clip`, when it has the keyboard: the selection
-    /// actions change the selection here, the others become a `note.*` command. `playhead` is the
-    /// arrangement's playhead in beats, `copied` how many notes `note.paste` would add. `None`
+    /// actions change the selection here, the others become a `note.*` command. `playhead` is
+    /// where playback is in the clip's placement's input (the arrangement's beat, or the beats
+    /// since a slot clip's launch), `copied` how many notes `note.paste` would add. `None`
     /// when the key does nothing here, so copy, cut, paste and duplicate act on the clip instead.
     pub fn key_action(
         &mut self,
@@ -600,8 +610,9 @@ pub struct Context<'a> {
     pub options: Options,
     pub keymap: &'a crate::keymap::Keymap,
     pub copied: Option<usize>,
-    /// The arrangement beat being played while the transport runs, for the playhead; `None`
-    /// while it is stopped.
+    /// Where playback is, in the clip's placement's input: the arrangement's beat for an
+    /// arrangement clip, the beats since the launch for a slot's clip; `None` while the
+    /// transport is stopped.
     pub playhead: Option<f64>,
 }
 

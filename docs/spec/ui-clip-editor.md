@@ -94,7 +94,9 @@ The editor, top to bottom:
    **Playhead** (built): while the transport runs, a 1 px line in the accent colour over the
    ruler, the grid and the velocity lane shows where playback is in the clip's content, mapped
    through the clip's start, offset and loop (a looping clip shows it going round its loop), in
-   step with the Arrangement view's playhead. Outside the clip, or while stopped, there is none.
+   step with the Arrangement view's playhead — for a clip in a Session slot, with the clip's own
+   play (the beats since its launch, which the engine reports), whether or not the transport is
+   inside the clip. Outside the clip, or while stopped, there is none.
 4. **Velocity lane** (built): under the grid, sharing its time axis, 72 px tall (less in a short
    detail area: at most 30 % of its height). One stem per note at the
    note's start, its height the velocity; a selected stem is brighter. **Later:** the lane's

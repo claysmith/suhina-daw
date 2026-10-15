@@ -2592,6 +2592,62 @@ fn launching_a_clip_greys_the_arrangement_until_back_to_arrangement() {
 }
 
 #[test]
+fn the_piano_roll_playhead_follows_a_launched_clip_not_the_transport() {
+    let project = demo_project();
+    let mut renderer = suhina_engine::Renderer::stopped(&project, &suhina_engine::AudioPool::new(), 48_000).unwrap();
+    let mut session = Session::new(project);
+    session.attach_player(suhina_session::Player::new(renderer.controller(), None));
+    let mut app = App::new();
+    app.set_browser_open(false);
+    app.set_session(session, &[]);
+    let mut harness = window(app);
+    harness.run();
+    // One-bar quantisation: a launch waits for the next bar.
+    harness.state_mut().projects_mut().execute("launcher.setQuantization", &json!({ "value": "1 bar" })).unwrap();
+    harness.state_mut().projects_mut().execute("transport.play", &json!({})).unwrap();
+    let mut block = vec![0.0f32; 2 * 256];
+    let mut pump = |harness: &mut Harness<'static, App>, renderer: &mut suhina_engine::Renderer, times: usize| {
+        for _ in 0..times {
+            harness.step();
+            for _ in 0..8 {
+                renderer.process(&mut block);
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+    };
+    // Two beats in, the click queues the launch for the next bar and selects the slot: the
+    // detail area opens its piano roll.
+    pump(&mut harness, &mut renderer, 24);
+    harness.get_by_label("Launch Beat A on Drums (scene 1)").click();
+    pump(&mut harness, &mut renderer, 3);
+    // The clip is only queued: the piano roll shows no playhead yet.
+    assert!(harness.query_by_label_contains("Playhead at beat").is_none(), "no playhead while the clip is only queued");
+    // Pump past the bar until the clip plays.
+    let mut playing = false;
+    for _ in 0..200 {
+        pump(&mut harness, &mut renderer, 1);
+        if harness.query_by_label("Stop Beat A on Drums (scene 1)").is_some() {
+            playing = true;
+            break;
+        }
+    }
+    assert!(playing, "the clip plays at the bar");
+    // The playhead is the clip's own position (the beats since its launch), not the transport's,
+    // which by now is past the clip's end — the old arrangement mapping would show none at all.
+    assert!(
+        harness.query_by_label_contains("Playhead at beat").is_some(),
+        "the piano roll shows the launched clip's playhead"
+    );
+    // Stopped, there is none.
+    harness.state_mut().projects_mut().execute("transport.stop", &json!({})).unwrap();
+    pump(&mut harness, &mut renderer, 5);
+    assert!(
+        harness.query_by_label_contains("Playhead at beat").is_none(),
+        "no playhead while the transport is stopped"
+    );
+}
+
+#[test]
 fn a_double_click_on_an_empty_slot_creates_a_clip_and_opens_its_piano_roll() {
     // Frames close enough together for a double-click.
     let mut harness = window_with_step(demo_app(), 1.0 / 60.0);
