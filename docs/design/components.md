@@ -141,9 +141,9 @@ Track colours: the track's own colour if it has one, else `track.1`–`track.4` 
 |---|---|---|---|
 | Empty without a stop button | `window.background` | none | |
 | Empty with a stop button | `window.background` | 3 × 3 `#4A4743` | |
-| Stopped | `control.background`, text `#C9C4BB` | 6 × 6 track colour | |
+| Stopped | `control.background`, text `#C9C4BB` | 6 × 6 track colour, a 4.5 px play glyph in `text.primary` inside it | |
 | Queued | `control.background` | 6 × 6 track colour at 50 % with 1 px `accent` outline | 1 px inset `accent` outline on the cell |
-| Playing | `control.playingBackground`, text `#FFFFFF` | 6 × 6 track colour | 2 px `accent` progress line along the bottom |
+| Playing | `control.playingBackground`, text `#FFFFFF` | 6 × 6 track colour, a 4.5 px stop glyph in `text.primary` inside it | 2 px `accent` progress line along the bottom |
 | Recording | (planned) `#3A2B2A`, text `#FFFFFF` | 6 px red dot | 2 px red progress line |
 
 The slot clicked last (on a track, not a group) is selected: a 1 px `text.primary` inset over

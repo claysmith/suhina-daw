@@ -24,6 +24,9 @@ const FOLD_ARROW: f32 = 12.0;
 /// Mark sizes inside a slot.
 const CLIP_MARK: f32 = 6.0;
 const EMPTY_MARK: f32 = 3.0;
+/// The play and stop glyphs inside a stopped or playing clip's 6 px mark, leaving colour
+/// visible around them.
+const SLOT_GLYPH: f32 = 4.5;
 /// How dim a muted track's lane is.
 const MUTED_ALPHA: f32 = 0.55;
 /// Volume range of the mixer's value, in dB.
@@ -598,8 +601,14 @@ fn slot_cell(
                 painter.rect_stroke(rect, 0.0, theme::hairline(accent), StrokeKind::Inside);
             } else {
                 painter.rect_filled(mark_rect(CLIP_MARK), 0.0, lane(mark, column.mute));
-                // The play glyph in the mark: the click launches the clip.
-                crate::browser_view::play_glyph(painter, mark_rect(CLIP_MARK).center(), false, theme::text_primary());
+                // The play glyph inside the mark: the click launches the clip.
+                crate::browser_view::play_glyph(
+                    painter,
+                    mark_rect(CLIP_MARK).center(),
+                    false,
+                    theme::text_primary(),
+                    SLOT_GLYPH,
+                );
             }
             let text = if column.mute { theme::text_hint() } else { text };
             widgets::text_in(painter, name_rect, Align2::LEFT_CENTER, &slot.name, font, text);
@@ -607,9 +616,15 @@ fn slot_cell(
         SlotState::Playing => {
             painter.rect_filled(rect, 0.0, lane(theme::control_playing(), column.mute));
             painter.rect_filled(mark_rect(CLIP_MARK), 0.0, lane(track_color, column.mute));
-            // The stop square in the mark: the click stops the clip. A stopped clip's mark
+            // The stop square inside the mark: the click stops the clip. A stopped clip's mark
             // carries the play glyph the same way, for its click's launch.
-            crate::browser_view::play_glyph(painter, mark_rect(CLIP_MARK).center(), true, theme::text_primary());
+            crate::browser_view::play_glyph(
+                painter,
+                mark_rect(CLIP_MARK).center(),
+                true,
+                theme::text_primary(),
+                SLOT_GLYPH,
+            );
             let text = if column.mute { theme::text_hint() } else { theme::text_playing() };
             widgets::text_in(painter, name_rect, Align2::LEFT_CENTER, &slot.name, font, text);
             let done = progress.unwrap_or(1.0).clamp(0.0, 1.0);
