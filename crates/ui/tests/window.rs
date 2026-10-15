@@ -1580,7 +1580,7 @@ fn the_detail_area_shows_the_selected_tracks_devices_in_a_row_or_stacked() {
     assert!(harness.query_by_label("Device Utility").is_none());
     harness.get_by_label("Track Drums").click();
     harness.run();
-    assert!(harness.query_by_label("Device Utility").is_some());
+    harness.get_by_label("Device Utility");
 
     let ctx = harness.ctx.clone();
     let settings =

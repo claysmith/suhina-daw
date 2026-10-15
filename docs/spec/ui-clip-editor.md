@@ -33,9 +33,10 @@ lane, the grid and zoom, and the `note.*` commands.
   left of the detail area and the piano roll in the rest of it, in place of the track's devices.
   Selecting a track, or an audio clip, shows what it showed before (devices; an audio clip's
   properties). With the detail area stacked on the right, the piano roll sits under the properties.
-- **Later ([#343](https://github.com/suhina-daw/suhina-daw/issues/343)):** a clip selected in a Session slot opens it too, once slot selection lands (open pull
-  request #302); the piano roll then edits that slot's clip with the same commands (`scene`
-  instead of `index`). A double-click on a clip opens the detail area if it is closed.
+  Selecting a MIDI clip in a Session slot shows it too: the piano roll edits that slot's clip with
+  the same commands (`scene` instead of `index`), and its follow action's controls stay beside it
+  (the follow panel takes its slice of the detail area first). A double-click on a clip opens the
+  detail area if it is closed.
 - **Later ([#64](https://github.com/suhina-daw/suhina-daw/issues/64)):** the device view and the
   clip editor as two tabs or a toggle, so a MIDI clip's track devices stay one click away.
 

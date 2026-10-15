@@ -1278,7 +1278,12 @@ impl App {
     /// and returns what is left for the view.
     fn detail_area(&mut self, ui: &mut Ui, area: Rect, actions: &mut Vec<Action>) -> Rect {
         let stacked = self.settings.device_layout == DeviceLayout::Stack;
-        // What it shows: the selected clip, or the selected track's devices.
+        // What it shows: the selected clip, or the selected track's devices. In the Session
+        // view, the selected slot's clip wins over the track's devices.
+        let slot = match self.shown {
+            View::Session => self.view.selected_slot,
+            View::Arrangement => None,
+        };
         let (track, clip) = match self.shown {
             View::Session => (self.view.selected, None),
             View::Arrangement => (self.arrangement.selected_tracks.first().copied(), self.arrangement.selected_clip()),
@@ -1314,8 +1319,12 @@ impl App {
             self.detail_height = self.detail_height.max(needed);
         }
         // A MIDI clip shows its notes in the piano roll beside its properties; under the
-        // Arrangement view it can be pulled to the top.
-        let piano = self.piano_clip(clip);
+        // Arrangement view it can be pulled to the top. In the Session view, the selected
+        // slot's clip.
+        let piano = match slot {
+            Some((t, scene)) => self.piano_slot_clip(t, scene),
+            None => self.piano_clip(clip),
+        };
         let pullable = !stacked && piano.is_some() && self.shown == View::Arrangement;
         let pulled = pullable && self.detail_max;
         let focus = clip.map(|(t, _)| t).filter(|_| pulled && self.settings.piano_roll_top == PianoRollTop::Track);
@@ -1377,8 +1386,9 @@ impl App {
         if let Some(shown_track) = clip.map(|(t, _)| t).or(track) {
             self.detail_drop = Some((detail, shown_track));
         }
-        let shown = self.session().map_or(detail_view::Detail::Nothing, |s| {
-            detail_view::build_with(s.project(), track, clip, &mut |t, i| reports.remove(&(t, i)))
+        let shown = self.session().map_or(detail_view::Detail::Nothing, |s| match slot {
+            Some((t, scene)) => detail_view::build_slot(s.project(), t, scene, &mut |t, i| reports.remove(&(t, i))),
+            None => detail_view::build_with(s.project(), track, clip, &mut |t, i| reports.remove(&(t, i))),
         });
         // A selected slot clip's follow action comes first, the rest of the detail beside or
         // under it.
@@ -1449,12 +1459,23 @@ impl App {
         Some(clip)
     }
 
+    /// The piano roll for the Session view's selected slot's clip.
+    fn piano_slot_clip(&self, track: TrackId, scene: usize) -> Option<piano_roll::PianoClip> {
+        let grid = self.piano_grid_name();
+        let quantization = suhina_session::parse_quantization(grid).ok()?;
+        let mut clip = piano_roll::launcher_clip(self.session()?.project(), track, scene, quantization)?;
+        clip.grid_name = grid;
+        Some(clip)
+    }
+
     /// The params that name the clip the piano roll shows in a `note.*` command, if it shows one.
     pub fn piano_roll_address(&self) -> Option<serde_json::Value> {
-        if self.shown != View::Arrangement {
-            return None;
+        match self.shown {
+            View::Arrangement => self.piano_clip(self.arrangement.selected_clip()).map(|c| c.address),
+            View::Session => {
+                self.view.selected_slot.and_then(|(t, scene)| self.piano_slot_clip(t, scene)).map(|c| c.address)
+            }
         }
-        self.piano_clip(self.arrangement.selected_clip()).map(|c| c.address)
     }
 
     /// The grid value the piano roll uses.
@@ -1464,10 +1485,10 @@ impl App {
 
     /// What a key does in the piano roll, when it shows a clip and has the keyboard.
     fn piano_key(&mut self, action: &str) -> Option<Action> {
-        if self.shown != View::Arrangement {
-            return None;
-        }
-        let clip = self.piano_clip(self.arrangement.selected_clip())?;
+        let clip = match self.shown {
+            View::Arrangement => self.piano_clip(self.arrangement.selected_clip())?,
+            View::Session => self.piano_slot_clip(self.view.selected_slot?.0, self.view.selected_slot?.1)?,
+        };
         let playhead = self.timeline.as_ref().map_or(0.0, |(_, t)| t.beat);
         let copied = self.session().and_then(Session::copied_notes);
         self.piano_roll.key_action(action, &clip, playhead, copied)

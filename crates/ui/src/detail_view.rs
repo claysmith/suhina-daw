@@ -9,7 +9,7 @@
 
 use egui::{Align2, Pos2, Rect, Sense, Ui, Vec2};
 use serde_json::json;
-use suhina_engine::model::{DeviceKind, LaneData, Project, TrackId};
+use suhina_engine::model::{Clip, DeviceKind, LaneData, Project, TrackId};
 use suhina_session::{Placement, PluginReport, PluginStatus};
 
 use crate::grid::gain_to_db;
@@ -176,52 +176,84 @@ pub fn build_with(
     clip: Option<(TrackId, usize)>,
     plugins: &mut dyn FnMut(TrackId, usize) -> Option<PluginReport>,
 ) -> Detail {
+    match clip {
+        Some((id, index)) => {
+            let placed =
+                project.arrangement.lanes.iter().find(|l| l.track == Some(id)).and_then(|l| l.clips.get(index));
+            match placed {
+                Some(placed) => clip_detail(project, id, placed, plugins),
+                None => track.map_or(Detail::Nothing, |id| Detail::Devices(chain(project, id, plugins))),
+            }
+        }
+        None => track.map_or(Detail::Nothing, |id| Detail::Devices(chain(project, id, plugins))),
+    }
+}
+
+/// The detail for a launcher slot's clip (`scene` 0-based): its properties and its track's
+/// chain, like an arrangement clip's.
+pub fn build_slot(
+    project: &Project,
+    track: TrackId,
+    scene: usize,
+    plugins: &mut dyn FnMut(TrackId, usize) -> Option<PluginReport>,
+) -> Detail {
+    project
+        .launcher
+        .columns
+        .iter()
+        .find(|c| c.track == track)
+        .and_then(|c| c.slots.get(scene))
+        .and_then(|s| s.clip.as_ref())
+        .map_or(Detail::Nothing, |placed| clip_detail(project, track, placed, plugins))
+}
+
+/// The clip's properties column and its track's chain — what a selected clip shows.
+fn clip_detail(
+    project: &Project,
+    track: TrackId,
+    placed: &Clip,
+    plugins: &mut dyn FnMut(TrackId, usize) -> Option<PluginReport>,
+) -> Detail {
+    let track_name =
+        |id: TrackId| project.tracks.iter().find(|t| t.id == id).map(|t| t.name.clone()).unwrap_or_default();
     let ts = project.transport.time_signature;
     let bar_beats =
         if ts.denominator == 0 { 4.0 } else { f64::from(ts.numerator.max(1)) * 4.0 / f64::from(ts.denominator) };
-    let track_name =
-        |id: TrackId| project.tracks.iter().find(|t| t.id == id).map(|t| t.name.clone()).unwrap_or_default();
-    if let Some((id, index)) = clip
-        && let Some(placed) =
-            project.arrangement.lanes.iter().find(|l| l.track == Some(id)).and_then(|l| l.clips.get(index))
-    {
-        let content = project.content(placed.content);
-        let audio = content.and_then(|c| {
-            c.lanes.iter().find_map(|l| match &l.data {
-                LaneData::Audio(region) => Some(region.gain),
-                LaneData::Notes(_) => None,
+    let content = project.content(placed.content);
+    let audio = content.and_then(|c| {
+        c.lanes.iter().find_map(|l| match &l.data {
+            LaneData::Audio(region) => Some(region.gain),
+            LaneData::Notes(_) => None,
+        })
+    });
+    let notes = content.map_or(0, |c| {
+        c.lanes
+            .iter()
+            .map(|l| match &l.data {
+                LaneData::Notes(notes) => notes.len(),
+                LaneData::Audio(_) => 0,
             })
-        });
-        let notes = content.map_or(0, |c| {
-            c.lanes
-                .iter()
-                .map(|l| match &l.data {
-                    LaneData::Notes(notes) => notes.len(),
-                    LaneData::Audio(_) => 0,
-                })
-                .sum()
-        });
-        let bars_beats = |beats: f64, from_one: u64| {
-            let bar = (beats / bar_beats).floor() as u64 + from_one;
-            let beat = (beats % bar_beats).floor() as u64 + from_one;
-            format!("{bar}.{beat}")
-        };
-        return Detail::Clip(
-            ClipInfo {
-                name: content.map(|c| c.name.clone()).unwrap_or_default(),
-                track: track_name(id),
-                start: bars_beats(placed.start, 1),
-                length: bars_beats(placed.length, 0),
-                looping: placed.loop_range.is_some(),
-                audio: audio.is_some(),
-                gain_db: audio.map(gain_to_db),
-                fades: (placed.fade_in, placed.fade_out),
-                notes,
-            },
-            chain(project, id, plugins),
-        );
-    }
-    track.map_or(Detail::Nothing, |id| Detail::Devices(chain(project, id, plugins)))
+            .sum()
+    });
+    let bars_beats = |beats: f64, from_one: u64| {
+        let bar = (beats / bar_beats).floor() as u64 + from_one;
+        let beat = (beats % bar_beats).floor() as u64 + from_one;
+        format!("{bar}.{beat}")
+    };
+    Detail::Clip(
+        ClipInfo {
+            name: content.map(|c| c.name.clone()).unwrap_or_default(),
+            track: track_name(track),
+            start: bars_beats(placed.start, 1),
+            length: bars_beats(placed.length, 0),
+            looping: placed.loop_range.is_some(),
+            audio: audio.is_some(),
+            gain_db: audio.map(gain_to_db),
+            fades: (placed.fade_in, placed.fade_out),
+            notes,
+        },
+        chain(project, track, plugins),
+    )
 }
 
 /// A track's devices as the detail area shows them.
