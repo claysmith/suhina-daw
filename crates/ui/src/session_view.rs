@@ -891,6 +891,19 @@ fn scene_column(
         let playing = motion::toward(ui.ctx(), response.id.with("playing"), scene.playing, motion::VALUE);
         let fill = motion::mix(hover, theme::control_playing(), playing);
         painter.rect_filled(rect, 0.0, fill);
+        // The launch glyph at the row's left: the whole row is the launch button, the glyph says
+        // so (a playing scene keeps it — its click relaunches the row).
+        let glyph = Rect::from_min_size(
+            Pos2::new(rect.left() + PAD, rect.center().y - SLOT_GLYPH / 2.0),
+            Vec2::splat(SLOT_GLYPH),
+        );
+        crate::browser_view::play_glyph(
+            painter,
+            glyph.center(),
+            false,
+            motion::mix(theme::text_secondary(), theme::text_primary(), widgets::hover(ui, &response).max(playing)),
+            SLOT_GLYPH,
+        );
         let inner = rect.shrink2(Vec2::new(PAD, 0.0));
         let mut name = scene.name.clone();
         if let Some(tempo) = scene.tempo_bpm {
@@ -908,7 +921,10 @@ fn scene_column(
             theme::mono_font(theme::TEXT_SMALL),
             theme::text_hint(),
         );
-        let name_rect = Rect::from_min_max(inner.min, Pos2::new(inner.right() - 18.0, inner.bottom()));
+        let name_rect = Rect::from_min_max(
+            Pos2::new(glyph.right() + PAD, inner.top()),
+            Pos2::new(inner.right() - 18.0, inner.bottom()),
+        );
         widgets::text_in(
             painter,
             name_rect,
