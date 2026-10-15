@@ -874,14 +874,21 @@ fn scene_column(
         if !rect.intersects(clip) {
             continue;
         }
+        // A playing row's button stops its clips; anything else launches.
+        let verb = if scene.playing { "Stop" } else { "Launch" };
         let label = if scene.name.is_empty() {
-            format!("Launch scene {}", scene.number)
+            format!("{verb} scene {}", scene.number)
         } else {
-            format!("Launch scene {} {}", scene.number, scene.name)
+            format!("{verb} scene {} {}", scene.number, scene.name)
         };
         let response = widgets::button_area(ui, rect.intersect(clip), Id::new(("scene", scene.number)), label);
         if response.clicked() {
-            actions.push(Action::new("scene.launch", json!({ "scene": scene.number })));
+            // A playing row's click stops its clips; anything else launches.
+            if scene.playing {
+                actions.push(Action::new("scene.stop", json!({ "scene": scene.number })));
+            } else {
+                actions.push(Action::new("scene.launch", json!({ "scene": scene.number })));
+            }
         }
         // A click in the menu's text fields keeps it open; its buttons close it.
         egui::Popup::context_menu(&response)
@@ -891,8 +898,8 @@ fn scene_column(
         let playing = motion::toward(ui.ctx(), response.id.with("playing"), scene.playing, motion::VALUE);
         let fill = motion::mix(hover, theme::control_playing(), playing);
         painter.rect_filled(rect, 0.0, fill);
-        // The launch glyph at the row's left: the whole row is the launch button, the glyph says
-        // so (a playing scene keeps it — its click relaunches the row).
+        // The row's glyph: the play arrow while its clips wait for a launch, the stop square
+        // while the row plays — the click does what the glyph says.
         let glyph = Rect::from_min_size(
             Pos2::new(rect.left() + PAD, rect.center().y - SLOT_GLYPH / 2.0),
             Vec2::splat(SLOT_GLYPH),
@@ -900,7 +907,7 @@ fn scene_column(
         crate::browser_view::play_glyph(
             painter,
             glyph.center(),
-            false,
+            scene.playing,
             motion::mix(theme::text_secondary(), theme::text_primary(), widgets::hover(ui, &response).max(playing)),
             SLOT_GLYPH,
         );

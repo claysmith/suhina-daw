@@ -60,6 +60,19 @@ fn clicked(harness: &mut Harness<'static, SessionHarness>, label: &str) -> Vec<A
 }
 
 #[test]
+fn a_playing_scene_row_stops_on_click() {
+    let mut harness = view();
+    // The row's button follows the state: while the row plays, its click stops the clips.
+    harness.state_mut().grid.scenes[0].playing = true;
+    harness.run();
+    assert_eq!(clicked(&mut harness, "Stop scene 1 Intro"), [Action::new("scene.stop", json!({ "scene": 1 }))]);
+    // A stopped row launches again.
+    harness.state_mut().grid.scenes[0].playing = false;
+    harness.run();
+    assert_eq!(clicked(&mut harness, "Launch scene 1 Intro"), [Action::new("scene.launch", json!({ "scene": 1 }))]);
+}
+
+#[test]
 fn clicking_a_clip_launches_it() {
     let mut harness = view();
     assert_eq!(

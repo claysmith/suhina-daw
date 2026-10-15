@@ -67,7 +67,9 @@ decides something the sources do not settle, the text says so (**Suhina:**).
    the beat grid from beat 0. The bar number keeps rising across the change (a bar cut short by
    it counts as one). Stopping the transport keeps the tempo and time signature a scene set and
    counts bars from the start again; editing the project's own tempo or time signature replaces
-   them.
+   them. **Suhina:** stopping a scene's row (`scene.stop`, the Session view's scene button while
+   the row plays) stops, at the next quantisation point, every column whose slot in that row has
+   a clip; a column whose slot in the row is empty keeps playing.
 6. **Stopping.** Stopping a column (its stop button, or an empty slot with a stop button) is
    quantised like a launch. "Stop all clips" stops every column, quantised. Stopping the
    transport stops everything at once, and clears queued launches. A jump of the playhead
