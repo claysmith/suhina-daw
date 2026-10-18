@@ -288,8 +288,9 @@ Both panels, top to bottom:
      line under them — a line with a diamond handle at the value's place, a drag along it sets
      the frequency, a click jumps — and the **EQ** button under that; **HQ**, **Delay** and
      **Volume** at the right, Volume last.
-   - Cab Loader: the **Phase** (Ø) and **HP** buttons; **Bass / Mid / Treble** with **Mid
-     Freq** under them; **Delay**; a vertical **Volume** slider.
+   - Cab Loader: **Delay** with the **Phase** (Ø) button under it at the left; the **HP**
+     button, then **Bass / Mid / Treble** with **Mid Freq** under them in the middle; a
+     vertical **Volume** slider at the right.
    - Toggles are lit when on: EQ, HQ, Phase, HP. Labels name the device: "Amp Modeler: gain" …
      "Cab Loader: volume".
 3. **The file row** — the file's own name ("FNDR BFSR VB Edge WRM2 CAB FREE.nam") in a dropdown

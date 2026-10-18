@@ -743,12 +743,12 @@ pub(crate) fn show_cab(
         ));
     }
     let controls = controls_rect(rect, top, bottom);
-    // The Delay column at the left and the Volume slider at the right; the middle holds the
-    // Ø and HP buttons, the cuts' knobs and the Mid Freq knob under them.
+    // The mock's arrangement: Delay with the Ø button under it at the left; HP, the cuts'
+    // knobs and the Mid Freq knob in the middle; the vertical Volume slider at the right.
     let (left, right) = (64.0, 52.0);
     let delay_cell = Rect::from_min_max(
         egui::pos2(controls.left(), controls.top()),
-        egui::pos2(controls.left() + left, controls.top() + 62.0),
+        egui::pos2(controls.left() + left, controls.top() + 56.0),
     );
     knob(
         ui,
@@ -758,6 +758,19 @@ pub(crate) fn show_cab(
         &prefix,
         cab_parameter("delay"),
         value_of(device, cab_parameter("delay")),
+        actions,
+    );
+    toggle(
+        ui,
+        Rect::from_center_size(
+            egui::pos2(controls.left() + left / 2.0, delay_cell.bottom() + ROW_HEIGHT / 2.0 + 2.0),
+            egui::vec2(48.0, ROW_HEIGHT),
+        ),
+        track,
+        device.index,
+        &prefix,
+        cab_parameter("phase"),
+        on_of(device, cab_parameter("phase")),
         actions,
     );
     let volume_cell = Rect::from_min_max(
@@ -778,30 +791,24 @@ pub(crate) fn show_cab(
         egui::pos2(controls.left() + left + 4.0, controls.top()),
         egui::pos2(controls.right() - right - 4.0, controls.bottom()),
     );
-    // The Ø and HP buttons.
-    let toggles =
-        Rect::from_min_max(middle_rect.left_top(), egui::pos2(middle_rect.right(), middle_rect.top() + ROW_HEIGHT));
-    let cells = split(toggles, 2);
-    for (cell, id) in cells.iter().zip(["phase", "hpOn"]) {
-        let parameter = cab_parameter(id);
-        toggle(
-            ui,
-            Rect::from_center_size(
-                cell.center().max(egui::pos2(cell.left() + 24.0, cell.center().y)),
-                egui::vec2(48.0, ROW_HEIGHT),
-            ),
-            track,
-            device.index,
-            &prefix,
-            parameter,
-            on_of(device, parameter),
-            actions,
-        );
-    }
-    // The cuts' knobs, then the Mid Freq's knob under them.
+    // The HP button at the middle's top, then the cuts' knobs, then the Mid Freq's knob.
+    let hp_cell = Rect::from_min_max(
+        middle_rect.left_top(),
+        egui::pos2(middle_rect.left() + 48.0, middle_rect.top() + ROW_HEIGHT),
+    );
+    toggle(
+        ui,
+        hp_cell,
+        track,
+        device.index,
+        &prefix,
+        cab_parameter("hpOn"),
+        on_of(device, cab_parameter("hpOn")),
+        actions,
+    );
     let cuts = Rect::from_min_max(
-        egui::pos2(middle_rect.left(), toggles.bottom() + 2.0),
-        egui::pos2(middle_rect.right(), toggles.bottom() + 46.0),
+        egui::pos2(middle_rect.left(), hp_cell.bottom() + 2.0),
+        egui::pos2(middle_rect.right(), hp_cell.bottom() + 58.0),
     );
     let cells = split(cuts, 3);
     for (cell, id) in cells.iter().zip(["cutBass", "cutMid", "cutTreble"]) {
@@ -810,10 +817,12 @@ pub(crate) fn show_cab(
     }
     let mid_freq_rect = Rect::from_min_max(
         egui::pos2(middle_rect.left(), cuts.bottom() + 2.0),
-        egui::pos2(middle_rect.right(), cuts.bottom() + 66.0).min(egui::pos2(middle_rect.right(), controls.bottom())),
+        egui::pos2(middle_rect.right(), (cuts.bottom() + 52.0).min(controls.bottom())),
     );
-    let mid_freq_cell =
-        Rect::from_center_size(mid_freq_rect.center(), egui::vec2(CELL + 20.0, mid_freq_rect.height().min(62.0)));
+    let mid_freq_cell = Rect::from_center_size(
+        mid_freq_rect.center(),
+        egui::vec2((CELL + 20.0).min(middle_rect.width()), mid_freq_rect.height()),
+    );
     knob(
         ui,
         mid_freq_cell,
