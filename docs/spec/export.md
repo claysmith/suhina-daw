@@ -1,6 +1,6 @@
 ---
 description: Rendering the mix to an audio file the user chose: the File › Export command in the app, the shared project.export command, the formats (WAV, FLAC, Ogg Vorbis) and their encoders, bit depths and dithering, ranges, rendering one node of the track tree (a track or a group, the foundation of the render matrix), and progress with a cancel
-read_when: export, export dialog, mixdown, bounce, render to a file, render the mix, render a track, render a group, stems, premaster, source, node, WAV, AIFF, FLAC, Ogg Vorbis, MP3, bit depth, 32-bit float, 24-bit, 16-bit, dither, normalize, sample rate, tail, range, loop region, project.export, overwrite, PickField, export a project, check it renders
+read_when: export, export dialog, mixdown, bounce, render to a file, render the mix, render a track, render a group, stems, premaster, source, node, WAV, AIFF, FLAC, Ogg Vorbis, MP3, bit depth, 32-bit float, 24-bit, 16-bit, dither, normalize, sample rate, tail, range, loop region, project.export, overwrite, PickField, export a project, parallel rendering, thread count, pre-roll, deterministic, check it renders
 type: spec
 status: draft
 last_verified: 2026-10-19
@@ -184,9 +184,37 @@ already running"`. When it finishes the dialog says where and how long:
   renders of all top-level tracks add to the master's; a track and a group start at the same
   frame when their devices have different latencies, and line up with the whole-mix render; a
   muted child is silent, a send to a return is absent and named in `warnings`; a name shared by
-  several tracks is refused with the count in the text.
+  several tracks is refused with the count in the text. The export and a `suhina-cli render` of
+  the same project and settings are the same bytes — the determinism the promises build on.
 - **In the app:** the menu item, the dialog's fields, and the cancel path deleting the partial
   file, as window tests.
+
+## The engine's promises
+
+The offline render the matrix stands on is parallel, and its result does not depend on how many
+threads ran. These are promises, written down so the first slice does not foreclose them; they
+are built when the slices below need them.
+
+- **Parallel.** An offline render may use every core: independent sources render at the same
+  time, and a group sums its children once they are all done. Ranges render in parallel too,
+  each starting with a pre-roll so reverb and delay state is warm — the range render of this
+  spec already guarantees the warm state the long way, from the project's own start, and the
+  pre-roll is the shorter way to the same state. Encoding and writing run on threads of their
+  own, a file's samples never waiting for another file's encoder. The thread count is a
+  setting; the default is all cores minus one.
+- **Bit-identical whatever the thread count.** The summing order is fixed — a group's children
+  in the project's track order, the buses after the tracks that feed them — never whoever
+  finishes first. A render with one thread and a render with many are the same bytes; the
+  golden-file tests run both ways and must match.
+- **The scheduler lives only in the offline path.** The audio callback stays lock-free (AGENTS.md
+  golden rule 3), and the node-processing code is shared with real-time playback (rule 4), which
+  is what keeps an offline render the test oracle for playback.
+- **Cancel leaves nothing behind.** A cancelled render stops without a half-written file, at any
+  time. The dialog's Cancel does this today; the matrix's job cancels the same way.
+
+The first slice honours them by not making them impossible: a render starts as a *job* — its
+source, range and settings are the command's params, handed to the offline render as data — not
+as a loop hard-wired to one file.
 
 ## The slices to the render matrix
 
@@ -201,7 +229,8 @@ effects. It builds on the encode step and the node rendering this spec adds, sli
    loop (the tail wraps to the range's start), a mono fold, and the sends-and-returns choice a
    node render has to offer.
 3. **The matrix**: several sources and several ranges in one pass, one file per cell, the presets
-   above as ways to fill it, and the progress and cancel of one job over all its files.
+   above as ways to fill it, the progress and cancel of one job over all its files, and the
+   parallel scheduler the [promises](#the-engines-promises) describe.
 
 New file formats and new options plug into the writer and the render job without touching the
 core: the format table above is where an encoder joins, and a render job's settings are the same
