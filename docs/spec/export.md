@@ -1,6 +1,6 @@
 ---
-description: Rendering the mix to an audio file the user chose: the File › Export command in the app, the shared project.export command, the formats (WAV, FLAC, Ogg Vorbis) and their encoders, bit depths and dithering, ranges, and progress with a cancel
-read_when: export, export dialog, mixdown, bounce, render to a file, render the mix, WAV, AIFF, FLAC, Ogg Vorbis, MP3, bit depth, 32-bit float, 24-bit, 16-bit, dither, normalize, sample rate, tail, range, loop region, project.export, overwrite, PickField, export a project, check it renders
+description: Rendering the mix to an audio file the user chose: the File › Export command in the app, the shared project.export command, the formats (WAV, FLAC, Ogg Vorbis) and their encoders, bit depths and dithering, ranges, rendering one node of the track tree (a track or a group, the foundation of the render matrix), and progress with a cancel
+read_when: export, export dialog, mixdown, bounce, render to a file, render the mix, render a track, render a group, stems, premaster, source, node, WAV, AIFF, FLAC, Ogg Vorbis, MP3, bit depth, 32-bit float, 24-bit, 16-bit, dither, normalize, sample rate, tail, range, loop region, project.export, overwrite, PickField, export a project, check it renders
 type: spec
 status: draft
 last_verified: 2026-10-19
@@ -22,10 +22,11 @@ launches), the MCP `project_render` reaches the same calls, and `clip.consolidat
 track's range into a new clip. What is missing is the export a user reaches from a menu, and the
 compressed and reduced formats a finished mix is shared in.
 
-Export is **one file of the whole mix** (post-master, exactly the stereo pair the audio device
-would play). Rendering more than one file — per-track stems, group stems, a render matrix where
-rows of tracks go into columns of files — is [the render matrix](#not-in-this-change) (#205), a
-separate feature that would sit on the same encode step this spec adds.
+Export is **one file** of the whole mix — post-master, exactly the stereo pair the audio device
+would play — or, with a `source`, one file of **one node of the track tree** (a track or a group),
+which is the first slice of the [render matrix](#the-slices-to-the-render-matrix) (#205): several
+files at once, sources × ranges, one per cell. Rendering more than one file is #205, a separate
+feature that sits on the same encode step this spec adds.
 
 ## Observed in Live
 
@@ -49,7 +50,9 @@ all export the same way:
 It renders the active project's arrangement with the same offline render the playback engine and
 `suhina-cli render` use (AGENTS.md rule 4), with the project's plug-ins started as
 `project_render` starts them today. `project_render` keeps its role (scene renders, launch
-scripts, WAV only); `project.export` is the user-facing file.
+scripts, WAV only); `project.export` is the user-facing file. `suhina-cli render --source
+<track or group>` reaches the same node render from the command line, which is also how the
+golden renders of the tests run.
 
 | Param | Meaning |
 |---|---|
@@ -58,6 +61,7 @@ scripts, WAV only); `project.export` is the user-facing file.
 | `sample_rate` | Hertz; default 48 000, the render default today. The dialog prefills the project's rate |
 | `bit_depth` | `32f` (default for WAV), `24` or `16`; applies to PCM only, an error with `ogg` |
 | `overwrite` | `false` by default: an existing file is never replaced (the text below) |
+| `source` | A track id, or a track or group name; left out, the whole mix. Renders one node of the track tree — [Sources](#sources-rendering-one-node-of-the-track-tree) |
 | `range` | `{start, end}` in beats from the arrangement's start; default the whole arrangement |
 | `tail` | Extra beats rendered after the range's last sound; default 0 (the engine's own tail is already in) |
 | `normalize` | Scale the file's peak to −0.3 dBFS; default `false` |
@@ -87,6 +91,35 @@ Rules the command keeps, wherever it runs:
 
 Export changes no project state; it does not appear in undo.
 
+## Sources: rendering one node of the track tree
+
+With `source`, the render takes its sum at one node of the track tree instead of at the master.
+A source is any track or group, named by id or by name (a name shared by several tracks is an
+error: `"3 tracks are named Bass"`). The render hears everything that plays into the node and the
+node's own chain, and nothing after it: a track comes with its own devices only; a group comes
+with the sum of the tracks routed through it and the group's own devices — a compressor on the
+group is in, its parent premaster and the master chain are out. The node's own volume, pan and
+mute are in, exactly as the mixer would play it.
+
+The engine builds the same graph as playback and the whole-mix render, and the offline render
+reads the source node's chain output where the master's sum would be (AGENTS.md rule 4); there is
+no second export path. The source node always has a chain in the graph, a passthrough when it
+would not have one (a track without devices, a group without them). Latency compensation is
+unchanged: every path inside the source is brought to the same latency it has in the whole mix, so
+two node renders start frame-true together and line up with each other and with the whole mix.
+
+- The mixer sounds as it does in playback: a muted track under the source is silent, a soloed one
+  is alone.
+- `range` bounds the source's render the way it bounds the whole mix; `tail`, `normalize`,
+  `dither` and the formats apply unchanged.
+- A send from a track under the source is **not** in a node render yet: return chains are left
+  out, and every return a track under the source sends to is named in the result's `warnings`
+  (`"sends to Echo are not in this render"`). Whether a node render carries its sends, and with
+  which of their effects, is the render matrix's choice to offer (#205); until then it is said,
+  never silent. The whole-mix export renders sends as always.
+- The master chain is the whole mix's, so a node render's peak can be over 1.0 where the mix
+  would not clip; `normalize` brings the file back under, the same as anywhere else.
+
 ## Formats
 
 One writer lives in `crates/media` (new `media/src/write.rs`, taking interleaved stereo `f32`
@@ -99,7 +132,7 @@ format below goes through the same entry point.
 | WAV | `32f`, `24`, `16` | [hound](https://github.com/hound) (already a dependency for the plug-in path; PCM and float WAV and AIFF) | Apache-2.0 OR MIT, on the allowlist |
 | FLAC | `24`, `16` | `flacenc` (pure Rust) — to verify at adoption | MIT OR Apache-2.0, on the allowlist |
 | Ogg Vorbis | n/a | bindings to libvorbis (`quality` 5) — the bindings crate is chosen at implementation | libvorbis is BSD-3-Clause; the licence of the chosen binding crate is checked with `cargo deny check` before it is added |
-| MP3 | — | not in the first version | LAME is LGPL-2.0-only, and the allowlist in `deny.toml` deliberately stops at LGPL-2.1; only a licence-clean encoder (LGPL-2.1, such as shine) reopens MP3, under this same table |
+| MP3 | — | not in the first version | LAME is LGPL-2.0-only, and the allowlist in `deny.toml` deliberately stops at LGPL-2.1. Checked in October 2026: the Rust port of shine declares LGPL-2.0 and fails the allowlist the same way; the one licence-clean encoder is `rusty_mp3` (Apache-2.0, pure Rust, no dependencies) — young, single-maintainer, unproven for a mixdown, so it is an evaluation of its own that adds a row here, not a guess in this change |
 
 Dither (triangular, seeded from the export's parameters so renders stay golden-file
 reproducible) applies when the file's depth is reduced; an oversampled renderer's noise is
@@ -116,6 +149,8 @@ The dialog:
   with the system save dialog like Save as… does — a new `PickField::ExportFile` through the
   same [`PickRequest`](../architecture.md) path, so the window and its tests need no dialog and
   every path can still be typed.
+- **Source**: *Whole mix* ‹default›, then every track and group in tree order, groups shown with
+  the tracks inside them indented. Choosing a node renders that node ([Sources](#sources-rendering-one-node-of-the-track-tree)).
 - **Format** with the file's extension following the choice; **Depth** shown only for PCM
   formats; **Sample rate** (44 100, 48 000, 88 200, 96 000, the project's prefilled);
   **Range** (Whole ‹default›, Loop region, or Start/End beat fields the user fills; Loop region
@@ -142,11 +177,34 @@ already running"`. When it finishes the dialog says where and how long:
 - **Ranges and tails:** an explicit range starts frame-true at its `start` beat (the same skip
   `clip.consolidate` does), a `tail` grows the file, the loop-region preset matches the model,
   and the empty-arrangement, range-validity and overwrite refusals carry the texts quoted above.
+- **One node of the track tree** (`source`): a group render carries the group's own devices and
+  nothing after it (a device on the parent premaster changes the master render and not the group
+  render); the renders of a group's children — through a project where every group only sums, no
+  devices anywhere above a track — add sample for sample to the render of the group, and the
+  renders of all top-level tracks add to the master's; a track and a group start at the same
+  frame when their devices have different latencies, and line up with the whole-mix render; a
+  muted child is silent, a send to a return is absent and named in `warnings`; a name shared by
+  several tracks is refused with the count in the text.
 - **In the app:** the menu item, the dialog's fields, and the cancel path deleting the partial
   file, as window tests.
 
-## Not in this change
+## The slices to the render matrix
 
-Stems and everything multi-file — per-track, groups, the render matrix — is #205, which would
-build on this spec's encode step. Video, MIDI files, SoundCloud and friends are nobody's
-problem today. MP3 waits for a licence-clean encoder; the format table above is where it joins.
+The render matrix (#205) is several files in one pass: any nodes of the track tree as sources ×
+any ranges, one file per cell, with the usual exports as presets on top of it — the whole mix,
+every top-level track as stems, selected tracks only, returns with and without the master's
+effects. It builds on the encode step and the node rendering this spec adds, slice by slice:
+
+1. **One chosen node to one file** — the `source` param of this spec (a track or a group, its own
+   devices, nothing after it). Everything else here is this slice.
+2. **The familiar options as settings of the same render job**, not a separate feature: render as
+   loop (the tail wraps to the range's start), a mono fold, and the sends-and-returns choice a
+   node render has to offer.
+3. **The matrix**: several sources and several ranges in one pass, one file per cell, the presets
+   above as ways to fill it, and the progress and cancel of one job over all its files.
+
+New file formats and new options plug into the writer and the render job without touching the
+core: the format table above is where an encoder joins, and a render job's settings are the same
+command's params whatever the file. Stems — what the matrix's presets produce — stay out of
+#601, with video, MIDI files and cloud places. MP3 waits for its encoder evaluation (the format
+table above is where it joins).
