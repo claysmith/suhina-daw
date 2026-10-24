@@ -58,7 +58,7 @@ pub(crate) const RING_CHANNELS: usize = 4;
 pub const ENGINE_BLOCK: usize = 1024;
 /// Blocks the ring keeps ahead of the device: the latency from the engine to the device is up
 /// to this many blocks (more when the device takes more than a block at once).
-const RING_BLOCKS: usize = 2;
+const RING_BLOCKS: usize = 4;
 /// Blocks the ring keeps ahead while a track is armed (ADR 0017): a key pressed waits for one
 /// block less, and the render thread has one device buffer's time to fill the next.
 const LIVE_RING_BLOCKS: usize = 1;
@@ -223,10 +223,18 @@ fn block_for(chosen: Option<u32>, overridden: Option<&str>) -> usize {
         .unwrap_or(ENGINE_BLOCK)
 }
 
-/// Frames the render thread keeps ahead in the ring: two blocks, or a device buffer and a
+/// Frames the render thread keeps ahead in the ring: four blocks, or a device buffer and a
 /// block when the device takes more at once. While someone may be playing live (`live`, a
 /// track armed), one block or one device buffer: the device's next callback is then all the
 /// render thread has to fill the ring again, so underruns tell when it is too little.
+///
+/// Four rather than two: a block's plug-in round trip is given a share of what is queued
+/// ahead of the device ([ADR 0006, decision 4]), and with two the 3 ms margin kept for the
+/// device left a heavy plug-in less than a quarter of a block's playing time — measured on an
+/// M3, Arturia-class synth blocks missed it from 3 % (three busy processes on the machine)
+/// to 81 % (the time-constraint policy deferred their work) of blocks, which is the crackle
+/// users hear with just a synth on a track. Four leave it near a whole block of room; the
+/// cost is two blocks more of output latency, which the measured latency reports anyway.
 fn ring_target(block: usize, device_frames: usize, live: bool) -> usize {
     let device = device_frames.min(MAX_DEVICE_FRAMES);
     if live { (LIVE_RING_BLOCKS * block).max(device) } else { (RING_BLOCKS * block).max(device + block) }

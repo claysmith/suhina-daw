@@ -708,10 +708,13 @@ impl Renderer {
     /// Publishes the plug-in blocks missed so far and the plug-in that missed most. Never
     /// allocates.
     fn publish_plugin_misses(&mut self) {
-        let (mut total, mut worst) = (0u64, (0u64, 0u64));
+        let (mut total, mut blocked, mut worst) = (0u64, 0u64, (0u64, 0u64));
+        let mut worst_trip = 0u32;
         for chain in &mut self.graph.chains {
             for slot in chain.plugin_slots() {
                 total += slot.missed;
+                blocked += slot.busy;
+                worst_trip = worst_trip.max(slot.longest_us);
                 if slot.missed > worst.1 {
                     worst = (slot.key, slot.missed);
                 }
@@ -719,6 +722,8 @@ impl Renderer {
         }
         let monitor = &self.graph.launcher.monitor;
         monitor.plugin_misses.store(total, std::sync::atomic::Ordering::Relaxed);
+        monitor.plugin_blocked.store(blocked, std::sync::atomic::Ordering::Relaxed);
+        monitor.worst_trip.store(worst_trip, std::sync::atomic::Ordering::Relaxed);
         monitor.worst_plugin.store(worst.0, std::sync::atomic::Ordering::Relaxed);
         monitor.worst_misses.store(worst.1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -842,10 +847,13 @@ impl Renderer {
         let block = frames as f64 / rate;
         let seconds = match self.render_lead {
             // What is queued plays while this block is made; the device's own buffer and a
-            // margin are kept for it. Never less than a quarter of the block, never past it.
+            // margin are kept for it. Never less than half the block, never past it: a quarter
+            // left a heavy plug-in (an analog-modeling synth at a small device buffer) only
+            // the margin — measured, its blocks missed it in bursts (the crackle a user hears
+            // with a plugin on a track). The engine itself needs far less than the rest.
             Some((queued, device)) => {
                 let room = (queued as f64 - device as f64) / rate - LEAD_MARGIN_SECONDS;
-                room.clamp(block * 0.25, block * 0.95)
+                room.clamp(block * 0.5, block * 0.95)
             }
             None => block * DEADLINE_SHARE,
         };

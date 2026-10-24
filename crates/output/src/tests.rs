@@ -76,9 +76,9 @@ fn the_engine_block_follows_the_chosen_buffer() {
 }
 
 #[test]
-fn the_ring_keeps_two_blocks_or_a_device_buffer_and_a_block() {
-    assert_eq!(ring_target(512, 0, false), 1024);
-    assert_eq!(ring_target(512, 128, false), 1024);
+fn the_ring_keeps_four_blocks_or_a_device_buffer_and_a_block() {
+    assert_eq!(ring_target(512, 0, false), 2048);
+    assert_eq!(ring_target(512, 128, false), 2048);
     assert_eq!(ring_target(256, 1024, false), 1280);
     // A device asking for absurd amounts is capped.
     assert_eq!(ring_target(64, usize::MAX, false), MAX_DEVICE_FRAMES + 64);
