@@ -176,15 +176,20 @@ impl Doorbell {
         #[cfg(not(any(target_os = "linux", windows)))]
         {
             // A short spin (a ring in it is noticed at once), then a nap, which counts as
-            // waiting and keeps the thread out of the scheduler's demotion. Never past the
-            // deadline by more than the nap itself; the caller re-checks word and deadline.
+            // waiting and keeps the thread out of the scheduler's demotion. The spin watches
+            // the word, and so does the moment before the nap: a response seen is not slept
+            // over. Never past the deadline by more than the nap itself; the caller re-checks
+            // word and deadline.
             let spin = left.min(SPIN_BEFORE_NAP);
             let started = Instant::now();
             while started.elapsed() < spin {
+                if word.load(Ordering::Acquire) != value {
+                    return;
+                }
                 std::hint::spin_loop();
             }
             let left = left.saturating_sub(started.elapsed());
-            if !left.is_zero() {
+            if !left.is_zero() && word.load(Ordering::Acquire) == value {
                 std::thread::sleep(left.min(NAP));
             }
         }

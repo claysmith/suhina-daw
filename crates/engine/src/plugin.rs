@@ -377,7 +377,7 @@ impl PluginSlot {
             Some(processor) => processor.process(span, events, timeout),
             None => false,
         };
-        if deadline.is_some() {
+        if deadline.is_some() && answered {
             self.longest_us = self.longest_us.max(u32::try_from(started.elapsed().as_micros()).unwrap_or(u32::MAX));
         }
         self.sent_at = None;
@@ -490,6 +490,18 @@ impl PluginSlot {
         let Some(processor) = self.processor.as_mut() else { return Sent::Unsupported };
         let patience = if deadline.is_some() { Duration::ZERO } else { OFFLINE_TIMEOUT };
         let sent = processor.send_joint(span, events, followers, patience);
+        // The lead slot's round trip is recorded as a plain one's is: the wait that follows is
+        // timed (`finish`), and a refused one counts as busy.
+        if deadline.is_some() {
+            self.sent_at = match sent {
+                Sent::Out => Some(Instant::now()),
+                Sent::Refused => {
+                    self.busy += 1;
+                    None
+                }
+                Sent::Unsupported => None,
+            };
+        }
         if sent == Sent::Refused {
             self.missed += 1;
             if self.instrument {
