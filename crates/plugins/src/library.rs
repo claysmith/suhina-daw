@@ -7,6 +7,7 @@
 //! settings folder, so a scan survives a restart and the next one reads only what changed.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::ffi::OsStr;
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -199,6 +200,18 @@ fn plain(path: PathBuf) -> PathBuf {
     rest.unwrap_or(path)
 }
 
+/// A leading `~` alone or before a separator becomes `home`, so a folder typed with one is the
+/// folder it names. `~name` (another user's home) stays as typed; without a home folder, too.
+fn expand_home(folder: &Path, home: Option<&OsStr>) -> PathBuf {
+    let Some(home) = home else { return folder.to_path_buf() };
+    match folder.strip_prefix("~") {
+        Ok(rest) if rest.as_os_str().is_empty() => PathBuf::from(home),
+        // `~name` is another user's home: not ours to expand.
+        Ok(rest) if !rest.is_absolute() => Path::new(home).join(rest),
+        _ => folder.to_path_buf(),
+    }
+}
+
 /// The folders the user added and the catalog, loaded from the settings folder on first use.
 #[derive(Debug, Clone)]
 pub struct Library {
@@ -316,9 +329,11 @@ impl Library {
     }
 
     /// Adds a folder to look in for `format`'s plug-ins; returns false if it was there already
-    /// with that format (with another one, the format changes).
+    /// with that format (with another one, the format changes). A folder typed with a leading
+    /// `~` works as typed: the home folder takes its place.
     pub fn add_folder_as(&mut self, folder: &Path, format: FolderFormat) -> Result<bool, String> {
         self.load();
+        let folder = expand_home(folder, std::env::var_os("HOME").as_deref());
         if !folder.is_dir() {
             return Err(format!("{} is not a folder", folder.display()));
         }

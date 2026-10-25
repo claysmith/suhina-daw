@@ -126,6 +126,21 @@ fn folders_keep_their_format_and_whether_they_are_on() {
     let _ = std::fs::remove_dir_all(&folder);
 }
 
+/// A leading `~` alone or before a separator is the home folder; `~name` and absolute paths stay.
+#[test]
+fn a_folder_typed_with_a_leading_tilde_expands_to_the_home_folder() {
+    let home = PathBuf::from("/Users/me");
+    let expand = |folder: &str, home: Option<&OsStr>| expand_home(Path::new(folder), home);
+    let with_home = Some(home.as_os_str());
+    assert_eq!(expand("~/Plug-ins/VST", with_home), PathBuf::from("/Users/me/Plug-ins/VST"));
+    assert_eq!(expand("~", with_home), PathBuf::from("/Users/me"));
+    assert_eq!(expand("~/", with_home), PathBuf::from("/Users/me"));
+    assert_eq!(expand("~user/plug-ins", with_home), PathBuf::from("~user/plug-ins"), "another user's home stays");
+    assert_eq!(expand("/plug-ins", with_home), PathBuf::from("/plug-ins"), "absolute stays");
+    assert_eq!(expand("relative/plug-ins", with_home), PathBuf::from("relative/plug-ins"), "relative stays");
+    assert_eq!(expand("~/Plug-ins", None), PathBuf::from("~/Plug-ins"), "no home folder, no expansion");
+}
+
 #[test]
 fn the_earlier_folders_file_is_read() {
     let (added, off) = parse_folders(r#"["/plugins/a", 5, "/plugins/b"]"#);

@@ -119,7 +119,11 @@ impl App {
                 ui.set_min_size(window.size());
                 let behind = ui.interact(window, Id::new("settings-behind"), Sense::click_and_drag());
                 let _swallowed = behind.clicked();
-                ui.painter().rect_filled(window, 0.0, theme::window_background().gamma_multiply(0.6));
+                // The status bar stays undimmed at the bottom: an error or a confirmation from
+                // the page is seen while the dialog is open, not only behind it.
+                let top = (window.bottom() - theme::STATUS_BAR).max(window.min.y);
+                let dim = Rect::from_min_max(window.min, Pos2::new(window.right(), top));
+                ui.painter().rect_filled(dim, 0.0, theme::window_background().gamma_multiply(0.6));
                 let size = Vec2::new(
                     SETTINGS_SIZE.x.min(window.width() - 2.0 * PAD),
                     SETTINGS_SIZE.y.min(window.height() - 2.0 * PAD),
