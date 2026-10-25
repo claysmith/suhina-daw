@@ -19,6 +19,21 @@ use suhina_update::Channel;
 /// The keys of `keymap.json`, where the keys and the mouse switches are saved.
 pub(crate) const KEYMAP: &[&str] = &["keymap.json"];
 
+/// The note under Editors where the device view's embedded editor cannot open. On macOS the
+/// editors still open, in a window of their own: a view of the plug-in host's process cannot
+/// attach to another process's window (ADR 0006), so the embed is what is missing, not the
+/// editors. On a system with no display at all (Linux without an X server), neither opens.
+pub(crate) fn editors_note(editors_embeddable: bool) -> Option<&'static str> {
+    if editors_embeddable {
+        return None;
+    }
+    Some(if cfg!(target_os = "macos") {
+        "Editors open in a window of their own on this system; inside the device panel needs Windows or an X server (DISPLAY)"
+    } else {
+        "Editors need Windows or an X server (DISPLAY); they do not open on this system yet"
+    })
+}
+
 /// Every setting the window shows, page by page.
 pub(crate) static ROWS: &[Entry] = &[
     // General.
@@ -258,8 +273,8 @@ pub(crate) static ROWS: &[Entry] = &[
         "In a window above Suhina, or inside the device panel as part of the chain",
         &["plugin_editors"],
         |cx, r| {
-            if !cx.about.editors_embeddable {
-                cx.note("Editors need Windows or an X server (DISPLAY); they do not open on this system yet");
+            if let Some(note) = editors_note(cx.about.editors_embeddable) {
+                cx.note(note);
             }
             let options = [("Window", EditorPlacement::Window), ("Device view", EditorPlacement::DeviceView)];
             cx.choose(r, &options, |s| &mut s.plugin_editors);
@@ -646,6 +661,21 @@ mod tests {
             .filter(|line| !line.starts_with('#'))
             .filter_map(|line| line.split_once('=').map(|(key, _)| key.trim().to_string()))
             .collect()
+    }
+
+    /// The note under Editors tells the truth about this system: where the editors still open
+    /// (macOS, #999), it does not say they do not; where they cannot (no display), it does.
+    #[test]
+    fn the_editors_note_names_what_is_missing_not_the_editors() {
+        assert!(editors_note(true).is_none(), "an embeddable system needs no note");
+        let note = editors_note(false).unwrap_or_default();
+        assert!(note.contains("DISPLAY"), "{note}");
+        if cfg!(target_os = "macos") {
+            assert!(note.contains("window of their own"), "{note}");
+            assert!(!note.contains("do not open"), "{note}");
+        } else {
+            assert!(note.contains("do not open"), "{note}");
+        }
     }
 
     #[test]
