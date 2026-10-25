@@ -141,6 +141,21 @@ fn a_folder_typed_with_a_leading_tilde_expands_to_the_home_folder() {
     assert_eq!(expand("~/Plug-ins", None), PathBuf::from("~/Plug-ins"), "no home folder, no expansion");
 }
 
+/// `HOME` first; where it is missing on Windows, the profile stands in. On other systems the
+/// profile does not count.
+#[test]
+fn the_home_falls_back_to_the_windows_profile() {
+    let home = Some(OsString::from("/Users/me"));
+    let profile = Some(OsString::from(r"C:\Users\me"));
+    assert_eq!(home_folder(home.clone(), profile.clone()), home, "HOME comes first");
+    assert_eq!(
+        home_folder(None, profile.clone()),
+        if cfg!(windows) { profile } else { None },
+        "where HOME is missing, Windows's profile stands in; elsewhere there is none"
+    );
+    assert_eq!(home_folder(None, None), None);
+}
+
 #[test]
 fn the_earlier_folders_file_is_read() {
     let (added, off) = parse_folders(r#"["/plugins/a", 5, "/plugins/b"]"#);

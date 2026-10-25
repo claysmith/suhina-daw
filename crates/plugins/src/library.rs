@@ -7,7 +7,7 @@
 //! settings folder, so a scan survives a restart and the next one reads only what changed.
 
 use std::collections::{BTreeMap, BTreeSet};
-use std::ffi::OsStr;
+use std::ffi::{OsStr, OsString};
 use std::io::Read as _;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
@@ -212,6 +212,18 @@ fn expand_home(folder: &Path, home: Option<&OsStr>) -> PathBuf {
     }
 }
 
+/// The home folder a typed `~` becomes: `HOME`, and on Windows also `USERPROFILE`, which Windows
+/// sets where `HOME` is often absent (only shells set `HOME` there).
+fn user_home() -> Option<OsString> {
+    home_folder(std::env::var_os("HOME"), std::env::var_os("USERPROFILE"))
+}
+
+/// `home`, or where it is missing on Windows, `profile`; on other systems only `HOME` counts, as
+/// before.
+fn home_folder(home: Option<OsString>, profile: Option<OsString>) -> Option<OsString> {
+    if cfg!(windows) { home.or(profile) } else { home }
+}
+
 /// The folders the user added and the catalog, loaded from the settings folder on first use.
 #[derive(Debug, Clone)]
 pub struct Library {
@@ -333,7 +345,7 @@ impl Library {
     /// `~` works as typed: the home folder takes its place.
     pub fn add_folder_as(&mut self, folder: &Path, format: FolderFormat) -> Result<bool, String> {
         self.load();
-        let folder = expand_home(folder, std::env::var_os("HOME").as_deref());
+        let folder = expand_home(folder, user_home().as_deref());
         if !folder.is_dir() {
             return Err(format!("{} is not a folder", folder.display()));
         }

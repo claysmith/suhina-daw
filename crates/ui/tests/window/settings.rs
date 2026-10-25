@@ -280,13 +280,16 @@ fn add_plugin_folder_opens_the_pickers_dialog_when_nothing_is_typed() {
     harness.get_by_label("Settings page: Plug-ins").click();
     harness.run();
 
-    // Nothing typed: Add asks for the system's folder dialog instead of doing nothing.
+    // Nothing typed: Add asks for the system's folder dialog instead of doing nothing. The
+    // format the row has chosen (CLAP here) goes with what the picker brings back.
+    harness.get_by_label("Folder format: CLAP").click();
+    harness.run();
     harness.get_by_label("Add plug-in folder").click();
     harness.run();
     assert_eq!(harness.state_mut().take_pick_request().map(|r| r.field), Some(PickField::PluginFolder));
     assert!(harness.query_all_by_label_contains("Remove ").count() == 0, "nothing was added yet");
 
-    // What the picker brings back goes in with the format the row has chosen (Both here).
+    // What the picker brings back is added through `plugin.addFolder` with the format chosen.
     harness.state_mut().set_picked(PickField::PluginFolder, folder.clone());
     harness.run();
     harness.run();
@@ -295,6 +298,13 @@ fn add_plugin_folder_opens_the_pickers_dialog_when_nothing_is_typed() {
         Status::Hint(message) => assert!(message.contains(&folder.display().to_string()), "{message}"),
         other => panic!("expected the added folder to be confirmed, got {other:?}"),
     }
+    use suhina_plugins::scan::FolderFormat;
+    let list = harness.state_mut().projects_mut().library_mut().folder_list();
+    let added: Vec<(std::path::PathBuf, FolderFormat)> =
+        list.iter().filter(|f| !f.standard).map(|f| (f.path.clone(), f.format)).collect();
+    // The library keeps the folder canonical, so `/var/…` is `/private/var/…` on macOS.
+    let kept = folder.canonicalize().unwrap_or_else(|_| folder.clone());
+    assert_eq!(added, [(kept, FolderFormat::Clap)], "the picked folder keeps the format chosen");
 
     // And it can be removed again.
     harness.get_by_label_contains("Remove ").click();
