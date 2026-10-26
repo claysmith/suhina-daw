@@ -7,12 +7,13 @@
 //! timeline and its points edited with the pointer. Every edit is an `automation.*` command;
 //! which lanes are shown is the view's own state, like a lane's height.
 
+use crate::kit::surface::Backgrounds as _;
 use std::collections::{HashMap, HashSet};
 
 use egui::{Align2, Color32, Id, Pos2, Rect, Sense, Shape, Stroke, StrokeKind, Ui, Vec2};
 use serde_json::{Value, json};
 use suhina_device_api::{ParamInfo, ParamKind, Unit};
-use suhina_engine::model::automation::{MUTE, PAN, VOLUME};
+use suhina_engine::model::automation::{self, MUTE, PAN, Taper, VOLUME};
 use suhina_engine::model::{AutomationLane, AutomationPoint, ClipId, DeviceKind, Project, Rgb, TrackId};
 
 use crate::interaction::timeline_grid::TimelineGrid;
@@ -93,7 +94,7 @@ impl Scale {
     /// Where `value` (as the lane keeps it) sits on the lane, 0 at the bottom to 1 at the top.
     pub fn position(&self, value: f64) -> f64 {
         let position = match self {
-            Self::Volume => volume_position(gain_to_db(value)),
+            Self::Volume => automation::volume_position(gain_to_db(value)),
             Self::Pan => (value + 1.0) / 2.0,
             Self::Mute => value,
             Self::Device(info) => info.to_normalized(value),
@@ -106,7 +107,7 @@ impl Scale {
     pub fn value_at(&self, position: f64) -> f64 {
         let position = if position.is_finite() { position.clamp(0.0, 1.0) } else { 0.0 };
         match self {
-            Self::Volume => db_at(position).map_or(0.0, |db| 10f64.powf(db / 20.0)),
+            Self::Volume => automation::VolumeTaper.value(position),
             Self::Pan => (position * 2.0 - 1.0).clamp(-1.0, 1.0),
             Self::Mute => position.round(),
             Self::Device(info) => info.from_normalized(position),
@@ -275,32 +276,6 @@ fn round(value: f64, per: f64) -> f64 {
 /// A linear gain in decibels; minus infinity for silence (a gain of 0 or less).
 fn gain_to_db(gain: f64) -> f64 {
     if gain > 0.0 { 20.0 * gain.log10() } else { f64::NEG_INFINITY }
-}
-
-/// Where a volume in decibels sits on a lane, 0 … 1: as the mixer's volume field places it
-/// (`arrangement_view::volume_position`, 0 dB at 85 %), in full precision so a point dragged
-/// keeps its value.
-fn volume_position(db: f64) -> f64 {
-    if !db.is_finite() || db <= VOLUME_FLOOR {
-        0.0
-    } else if db <= 0.0 {
-        let x = (db - VOLUME_FLOOR) / -VOLUME_FLOOR;
-        0.85 * x * x
-    } else {
-        0.85 + 0.15 * (db / 6.0).min(1.0)
-    }
-}
-
-/// The volume in decibels at `position` on a lane: the inverse of the volume field's placing
-/// (0 dB at 85 %); `None` for silence at the bottom.
-fn db_at(position: f64) -> Option<f64> {
-    if position <= 0.0 {
-        None
-    } else if position <= 0.85 {
-        Some(VOLUME_FLOOR * (1.0 - (position / 0.85).sqrt()))
-    } else {
-        Some(((position - 0.85) / 0.15 * 6.0).min(6.0))
-    }
 }
 
 /// A parameter a track's lanes can show: what it is called, how its values map, and its lane's
@@ -678,9 +653,23 @@ pub fn header_button(
     if response.clicked() {
         state.toggle(track, params);
     }
+    // `#control-automation`, `:checked` while the lanes show, and `automation` artwork.
+    let _style = crate::kit::style_class::enter_named_response("button", "automation", &response);
+    crate::kit::native_css::mark(crate::kit::native_css::HostState::Checked, open);
     let hover = widgets::hover(ui, &response);
     let off = crate::kit::motion::mix(theme::control_background(), theme::control_hover(), hover);
-    painter.rect_filled(rect, 0.0, if open { theme::control_active() } else { off });
+    widgets::track_button_face(ui, painter, rect, &response, if open { theme::control_active() } else { off });
+    let ink = crate::kit::style_class::foreground(if open { theme::text_primary() } else { theme::text_secondary() });
+    if crate::kit::skin::paint(
+        painter,
+        rect,
+        "automation",
+        crate::kit::skin::State::response(&response, open),
+        ink,
+        0.0,
+    ) {
+        return;
+    }
     // A small envelope: up, along, down.
     let glyph = rect.shrink2(Vec2::new(4.0, 4.0));
     let line = vec![
@@ -689,7 +678,6 @@ pub fn header_button(
         Pos2::new(glyph.left() + glyph.width() * 0.65, glyph.top()),
         glyph.right_bottom(),
     ];
-    let ink = if open { theme::text_primary() } else { theme::text_secondary() };
     painter.add(Shape::line(line, Stroke::new(1.0, ink)));
 }
 
@@ -797,14 +785,15 @@ fn envelope(points: &[AutomationPoint], scale: &Scale, plot: Rect, geometry: &Ge
         if scale.stepped() {
             line.push(at(b.beat, a.value));
         } else {
-            // Sampled even when straight: a straight segment of the volume is straight in gain,
-            // which is not straight on the lane.
-            let steps = (((xb - xa) / 2.0).ceil() as usize).clamp(2, SEGMENT_POINTS);
+            // Evenly in the lane's position, as the engine plays it: a straight segment is a
+            // straight line; a bent one is sampled along its curve.
+            let (ya, yb) = (scale.position(a.value), scale.position(b.value));
+            let steps = if a.curve == 0.0 { 1 } else { (((xb - xa) / 2.0).ceil() as usize).clamp(2, SEGMENT_POINTS) };
             for step in 1..steps {
                 let t = step as f64 / steps as f64;
                 let shaped = suhina_engine::model::automation::shape(t, a.curve);
-                let value = a.value + (b.value - a.value) * shaped;
-                line.push(at(a.beat + (b.beat - a.beat) * t, value));
+                let x = geometry.x_of(a.beat + (b.beat - a.beat) * t);
+                line.push(Pos2::new(x, y_of(plot, ya + (yb - ya) * shaped)));
             }
         }
         line.push(at(b.beat, b.value));
@@ -815,6 +804,23 @@ fn envelope(points: &[AutomationPoint], scale: &Scale, plot: Rect, geometry: &Ge
 
 /// The points a click on a lane is measured against: the lane's own, or for a lane without
 /// points one at the parameter's value, its faint line.
+/// A lane moves evenly in its position, as the engine plays it.
+impl automation::Taper for Scale {
+    fn position(&self, value: f64) -> f64 {
+        Scale::position(self, value)
+    }
+    fn value(&self, position: f64) -> f64 {
+        // A whole-number parameter moves along the line between its points and the device
+        // rounds, as the engine plays it.
+        match self {
+            Self::Device(info) if matches!(info.kind, ParamKind::Integer) => {
+                info.min + position.clamp(0.0, 1.0) * (info.max - info.min)
+            }
+            _ => self.value_at(position),
+        }
+    }
+}
+
 fn level_points(param: &Param) -> Vec<AutomationPoint> {
     if param.points.is_empty() { vec![AutomationPoint::new(0.0, param.current)] } else { param.points.clone() }
 }
@@ -834,13 +840,15 @@ fn distance_to(line: &[Pos2], pos: Pos2) -> f32 {
         .fold(f32::INFINITY, f32::min)
 }
 
-/// A point at `beat` that leaves the envelope of `points` as it is: the envelope's value there,
-/// and the curve of the segment it starts. The segment before it keeps its curve, which is exact
-/// (a power curve cut short is the same power curve); the one after it gets the curve through
-/// the old segment's middle, exact for a straight segment. `None` for no points.
-fn splice(points: &[AutomationPoint], beat: f64, stepped: bool) -> Option<(f64, f64)> {
-    use suhina_engine::model::automation::{shape, value_at};
-    let value = value_at(points, beat, stepped)?;
+/// A point at `beat` that leaves the envelope of `points` (on `scale`) as it is: the envelope's
+/// value there, and the curve of the segment it starts. The segment before it keeps its curve and
+/// the one after it gets the curve through the old segment's middle: exact for a straight or
+/// level segment, close for a bent one (a bend cut in two is not two bends of the same kind).
+/// `None` for no points.
+fn splice(points: &[AutomationPoint], beat: f64, scale: &Scale) -> Option<(f64, f64)> {
+    use suhina_engine::model::automation::{curve_through, shape, value_at};
+    let stepped = scale.stepped();
+    let value = value_at(points, beat, stepped, scale)?;
     let index = points.partition_point(|p| p.beat <= beat).checked_sub(1);
     let segment = index.and_then(|i| Some((points.get(i)?, points.get(i + 1)?)));
     let Some((a, b)) = segment.filter(|(a, b)| !stepped && a.curve != 0.0 && b.beat > a.beat) else {
@@ -849,10 +857,7 @@ fn splice(points: &[AutomationPoint], beat: f64, stepped: bool) -> Option<(f64, 
     let t = (beat - a.beat) / (b.beat - a.beat);
     let start = shape(t, a.curve);
     let middle = (shape(t + (1.0 - t) / 2.0, a.curve) - start) / (1.0 - start);
-    // `shape(0.5, c)` is 0.5 to the power of 4^-c.
-    let curve = -(middle.ln() / 0.5f64.ln()).ln() / 4f64.ln();
-    let curve =
-        if middle > 0.0 && middle < 1.0 && curve.is_finite() { round(curve.clamp(-1.0, 1.0), 1000.0) } else { 0.0 };
+    let curve = curve_through(0.5, middle).map_or(0.0, |c| round(c.clamp(-1.0, 1.0), 1000.0));
     Some((value, curve))
 }
 
@@ -868,7 +873,7 @@ fn segment_at(points: &[AutomationPoint], scale: &Scale, plot: Rect, geometry: &
     if b.beat <= a.beat || a.value == b.value {
         return None;
     }
-    let value = suhina_engine::model::automation::value_at(points, beat, false)?;
+    let value = suhina_engine::model::automation::value_at(points, beat, false, scale)?;
     ((y_of(plot, scale.position(value)) - pos.y).abs() <= SEGMENT_HIT).then_some(index)
 }
 
@@ -910,7 +915,7 @@ fn lane(
         let near = distance_to(&envelope(&level, &param.scale, plot, geometry), pos) <= SEGMENT_HIT;
         // On a whole-number lane a value between two numbers cannot be kept: the point goes where
         // the pointer is, as off the line.
-        match splice(&level, beat, param.scale.stepped()).filter(|(value, _)| near && param.scale.keeps(*value)) {
+        match splice(&level, beat, &param.scale).filter(|(value, _)| near && param.scale.keeps(*value)) {
             Some((value, curve)) => {
                 params["value"] = param.scale.exact(value);
                 if curve != 0.0 {
@@ -952,29 +957,18 @@ fn lane(
             drag.to = pos;
         }
     }
-    if body.drag_stopped_by(egui::PointerButton::Primary) {
-        if let Some(drag) = state.curve_drag.take_if(|d| d.track == track && &d.key == key) {
-            let before = param.points.get(drag.point).map_or(0.0, |p| p.curve);
-            if (drag.curve - before).abs() > 1e-6 {
-                let mut params = key.params(track);
-                params["point"] = json!(drag.point);
-                params["curve"] = json!(round(drag.curve, 1000.0));
-                actions.push(Action::new("automation.movePoint", params));
-            }
-        }
-        if let Some(drag) = state.box_drag.take_if(|d| d.track == track && &d.key == key) {
-            let area = Rect::from_two_pos(drag.from, drag.to);
-            let points: Vec<usize> = param
-                .points
-                .iter()
-                .enumerate()
-                .filter(|(_, p)| {
-                    area.contains(Pos2::new(geometry.x_of(p.beat), y_of(plot, param.scale.position(p.value))))
-                })
-                .map(|(i, _)| i)
-                .collect();
-            state.selection = (!points.is_empty()).then(|| Selection { track, key: key.clone(), points });
-        }
+    if body.drag_stopped_by(egui::PointerButton::Primary)
+        && let Some(drag) = state.box_drag.take_if(|d| d.track == track && &d.key == key)
+    {
+        let area = Rect::from_two_pos(drag.from, drag.to);
+        let points: Vec<usize> = param
+            .points
+            .iter()
+            .enumerate()
+            .filter(|(_, p)| area.contains(Pos2::new(geometry.x_of(p.beat), y_of(plot, param.scale.position(p.value)))))
+            .map(|(i, _)| i)
+            .collect();
+        state.selection = (!points.is_empty()).then(|| Selection { track, key: key.clone(), points });
     }
 
     // The envelope: in the track colour while it plays, dimmed while a manual change has turned
@@ -983,6 +977,20 @@ fn lane(
     let points = shown_points(param, track, geometry, free, state);
     let ink = if param.enabled { color(lanes.color) } else { theme::text_hint() };
     let line = envelope(&points, &param.scale, plot, geometry);
+    // A finished bend asks for its command only now, after the envelope above drew it: the
+    // project has the new curve only once the command has run, after this frame, so dropping
+    // the drag before drawing showed the old curve for one frame.
+    if body.drag_stopped_by(egui::PointerButton::Primary)
+        && let Some(drag) = state.curve_drag.take_if(|d| d.track == track && &d.key == key)
+    {
+        let before = param.points.get(drag.point).map_or(0.0, |p| p.curve);
+        if (drag.curve - before).abs() > 1e-6 {
+            let mut params = key.params(track);
+            params["point"] = json!(drag.point);
+            params["curve"] = json!(round(drag.curve, 1000.0));
+            actions.push(Action::new("automation.movePoint", params));
+        }
+    }
     if line.len() > 1 {
         lane_painter.add(Shape::line(line, Stroke::new(1.5, ink)));
     } else if points.is_empty() {
@@ -1202,7 +1210,7 @@ fn heading_row(ui: &mut Ui, name: &str, count: usize, marked: bool, open: bool, 
     if ui.is_rect_visible(rect) {
         let painter = ui.painter();
         if toggles && response.hovered() {
-            painter.rect_filled(rect, 2.0, ui.visuals().widgets.hovered.weak_bg_fill);
+            painter.fill_background(rect, 2.0, ui.visuals().widgets.hovered.weak_bg_fill);
         }
         widgets::chevron(painter, Pos2::new(rect.left() + 6.0, rect.center().y), open, theme::text_hint());
         let font = egui::TextStyle::Button.resolve(ui.style());
@@ -1222,7 +1230,9 @@ fn heading_row(ui: &mut Ui, name: &str, count: usize, marked: bool, open: bool, 
 fn parameter_row(ui: &mut Ui, choice: &Param, current: &LaneKey, free: bool, scroll: bool) -> bool {
     let mark = if choice.points.is_empty() { "" } else { " •" };
     let selected = choice.key == *current;
-    let button = egui::Button::selectable(selected, format!("{}{mark}", choice.short_name()));
+    let text = egui::RichText::new(format!("{}{mark}", choice.short_name()));
+    let text = if selected { text.color(theme::text_on(ui.visuals().selection.bg_fill)) } else { text };
+    let button = egui::Button::selectable(selected, text);
     let response = ui.add_enabled(free, button);
     let label = choice.label();
     response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, free, selected, &label));
@@ -1239,7 +1249,9 @@ fn parameter_row(ui: &mut Ui, choice: &Param, current: &LaneKey, free: bool, scr
 fn automated_row(ui: &mut Ui, choice: &Param, current: &LaneKey, free: bool, scroll: bool) -> bool {
     let selected = choice.key == *current;
     let label = choice.label();
-    let response = ui.add_enabled(free, egui::Button::selectable(selected, &label));
+    let text = egui::RichText::new(&label);
+    let text = if selected { text.color(theme::text_on(ui.visuals().selection.bg_fill)) } else { text };
+    let response = ui.add_enabled(free, egui::Button::selectable(selected, text));
     let label = format!("{label} (automated)");
     response.widget_info(|| egui::WidgetInfo::selected(egui::WidgetType::SelectableLabel, free, selected, &label));
     if scroll && selected {
@@ -1414,7 +1426,7 @@ fn lane_header(
         return;
     }
     let painter = painter.with_clip_rect(clip);
-    painter.rect_filled(rect, 0.0, theme::panel_background());
+    painter.fill_background(rect, 0.0, theme::panel_background());
     let track = lanes.track;
     let id = Id::new(("automation-header", track.0, param.key.device, param.key.param.as_str()));
     let inner = rect.shrink2(Vec2::new(PAD, 5.0));
@@ -1459,6 +1471,8 @@ fn lane_header(
                 .is_some_and(|p| last.is_some_and(|r| !r.contains(p)) && !response.rect.contains(p))
     });
     let menu = egui::Popup::menu(&response)
+        // The theme's popup fill: see-through where the theme is, with the window blurred under it.
+        .frame(egui::Frame::popup(ui.style()))
         .align(align)
         .align_alternatives(&[])
         .close_behavior(egui::PopupCloseBehavior::IgnoreClicks);
@@ -1519,7 +1533,7 @@ fn lane_header(
             response.on_hover_text("A manual change turned this automation off; click to follow it again")
         };
         let (fill, ink) = widgets::toggle_colors(ui, &response, param.enabled);
-        painter.rect_filled(toggle, 0.0, fill);
+        painter.fill_background(toggle, 0.0, fill);
         if !param.enabled {
             painter.rect_stroke(toggle, 0.0, theme::hairline(theme::accent()), StrokeKind::Inside);
         }
@@ -1582,7 +1596,7 @@ fn forget_menu(ui: &Ui, filter: Id, placed: Id) {
 fn small_button(ui: &Ui, painter: &egui::Painter, rect: Rect, response: &egui::Response, text: &str) {
     let fill =
         crate::kit::motion::mix(theme::control_background(), theme::control_hover(), widgets::hover(ui, response));
-    painter.rect_filled(rect, 0.0, fill);
+    painter.fill_background(rect, 0.0, fill);
     widgets::text_in(painter, rect, Align2::CENTER_CENTER, text, theme::ui_font(theme::TEXT), theme::text_secondary());
 }
 
