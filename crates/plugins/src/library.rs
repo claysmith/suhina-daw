@@ -194,7 +194,7 @@ pub fn host_next_to_this_program() -> PathBuf {
 }
 
 /// `path` without Windows' `\\?\` prefix where it is an ordinary drive path, as people write it.
-fn plain(path: PathBuf) -> PathBuf {
+pub fn plain(path: PathBuf) -> PathBuf {
     let rest = {
         let text = path.to_string_lossy();
         text.strip_prefix(r"\\?\").filter(|rest| rest.as_bytes().get(1) == Some(&b':')).map(PathBuf::from)

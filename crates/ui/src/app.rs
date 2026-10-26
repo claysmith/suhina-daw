@@ -1506,7 +1506,10 @@ impl App {
                 .map(|d| d.path.trim().to_string())
                 .filter(|text| !text.is_empty())
                 .and_then(|text| Path::new(&text).parent().map(Path::to_path_buf)),
-            PickField::BrowserFolder | PickField::McpWriteFolder | PickField::PluginFolder | PickField::BackgroundImage => None,
+            PickField::BrowserFolder
+            | PickField::McpWriteFolder
+            | PickField::PluginFolder
+            | PickField::BackgroundImage => None,
         };
         self.pick_request = Some(PickRequest { field, start });
     }

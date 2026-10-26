@@ -321,8 +321,9 @@ fn add_plugin_folder_opens_the_pickers_dialog_when_nothing_is_typed() {
     let list = harness.state_mut().projects_mut().library_mut().folder_list();
     let added: Vec<(std::path::PathBuf, FolderFormat)> =
         list.iter().filter(|f| !f.standard).map(|f| (f.path.clone(), f.format)).collect();
-    // The library keeps the folder canonical, so `/var/…` is `/private/var/…` on macOS.
-    let kept = folder.canonicalize().unwrap_or_else(|_| folder.clone());
+    // The library keeps the folder canonical, so `/var/…` is `/private/var/…` on macOS, and
+    // without Windows' extended-length prefix (Library::add_folder_as keeps it the same way).
+    let kept = folder.canonicalize().map(suhina_plugins::library::plain).unwrap_or_else(|_| folder.clone());
     assert_eq!(added, [(kept, FolderFormat::Clap)], "the picked folder keeps the format chosen");
 
     // And it can be removed again.
