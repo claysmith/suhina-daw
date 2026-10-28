@@ -97,7 +97,8 @@ exists in `devices/`, passes its tests and runs in track chains.
 | convolution reverb | own convolution | planned |
 | saturator: eight curves, Color filters and their inverse, post clip, waveshaper, dry/wet | own, oversampled | done |
 | multi-stage saturation | own, oversampled | planned |
-| EQ, filter | own (`dsp` filters) | planned |
+| EQ: eight bands of eight types, two curves for Stereo, Left/Right or Mid/Side, Scale, Adaptive Q | own (`dsp` state-variable filters) | done; analyser, Audition and a curve display planned |
+| filter | own (`dsp` filters) | planned |
 | FM synth | MSFA (Apache-2.0) via Dexed | DX7-style engine (32 algorithms) done; more waveforms and a filter planned |
 | wavetable synth | Vital (GPL-3.0), under its own name | planned |
 | subtractive synth | own, Surge XT (GPL-3.0) for reference | planned |
@@ -172,7 +173,7 @@ refused or suspended, never by losing its edits.
   control-group coordinates simplify panels without changing their saved format or runtime.
 
 - Every built-in effect, instrument and MIDI effect has editable controls in the device panel:
-  its layout (the Sampler's), or a parameter list generated from the device's own parameters,
+  its layout (the Sampler's; the Compressor's `panel.json`, a grid of knobs; the Overdrive's, a band to drag and dials), or a parameter list generated from the device's own parameters,
   260 px wide and at most 168 px high, scrolling past that. Each change is `device.setParam`, so it
   is one undo step and an automation lane takes it over. Built-ins are native code with a layout
   loaded by their id, not `.sd` files ([ADR 0021](docs/decisions/0021-device-graph-files.md) ›
@@ -230,6 +231,9 @@ From Live Sets we authored ourselves in Live 12.4 ([format spec](docs/spec/als-f
 - the Pitch MIDI effect, with its settings ([pitch](docs/spec/pitch.md))
 - a saturator; a Live Set's Saturator comes in as it with its panel settings, Hi-Quality aside
   (Suhina always oversamples) ([saturator](docs/spec/saturator.md))
+- an eight-band EQ; the matching device in a Live Set comes in as it with both curves of every
+  band, its mode, Scale and Adaptive Q; its oversampling option is noted and not used
+  ([EQ](docs/spec/eq.md), [import](docs/spec/device-import.md))
 - a MIDI clip's scale (root and mode), which Pitch follows; a scale Suhina has no mode for comes
   in as none, with a warning
 - anything not understood yet is skipped with a warning; the project still opens
