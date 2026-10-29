@@ -497,6 +497,12 @@ impl ArrangementViewState {
         self.pressed_clip = None;
     }
 
+    /// Forgets a press that was held on a clip whose widget has since gone away (scrolled out
+    /// before the release), so it can carry nothing. A live drag is untouched.
+    pub fn clear_pressed_clip(&mut self) {
+        self.pressed_clip = None;
+    }
+
     /// Selects a clip: its track and id.
     pub fn select_clip(&mut self, track: TrackId, clip: ClipId) {
         self.select_clips(vec![(track, clip)]);

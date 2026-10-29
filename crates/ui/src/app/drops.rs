@@ -259,14 +259,20 @@ impl App {
         self.close_large_map();
     }
 
-    /// While a clip is carried between the views: the label beside the pointer, Escape to stop,
-    /// and on release a copy of it in the slot or on the lane under the pointer
-    /// (`docs/spec/ui-session-view.md` › Between the views). A clip slot's drag starts one; so
-    /// does a press held on one when the view switched away from the Session, and a clip
-    /// dragged in the Arrangement view when the view shown switches away from it
-    /// while the drag is live — Tab, the mapping mode or the hover over the other view's name:
-    /// the dragged clip's widget is no longer drawn there, so the drag goes on as a carry.
-    pub(super) fn carry_clip(&mut self, ui: &Ui) {
+    /// Turns a live clip drag — or a press held on a clip before the drag was decided — into a
+    /// carry, when the view shown has switched away from the drag's own: Tab, the mapping mode,
+    /// the View menu, or the hover over the other view's name
+    /// (`docs/spec/ui-session-view.md` › Between the views). The dragged clip's widget is no
+    /// longer drawn in the view shown now, so the drag goes on as a carry. Runs before the
+    /// drop probe reads the carry, so the switch's first frame probes with it.
+    pub(super) fn begin_clip_carry(&mut self, ctx: &egui::Context) {
+        // A press that is no longer held carries nothing: its record dies here, even when the
+        // clip or slot it was held on went away (scrolled out) before the release, so its
+        // widget could not clear its own. A live drag ends by its own paths and is untouched.
+        if !ctx.input(|i| i.pointer.primary_down()) {
+            self.arrangement.clear_pressed_clip();
+            self.view.pressed_slot = None;
+        }
         let mut from_slot = self.view.slot_drag.take();
         if from_slot.is_none() && self.shown == View::Arrangement {
             // A press held on a slot's clip when the view switched away from the Session —
@@ -283,7 +289,7 @@ impl App {
                     p.content(clip.content).map(|c| c.name.clone())
                 })
                 .unwrap_or_default();
-            ui.ctx().stop_dragging();
+            ctx.stop_dragging();
             self.carry = Some(Carry { from: CarryFrom::Slot { track, scene }, name });
         }
         if self.carry.is_none()
@@ -298,10 +304,17 @@ impl App {
                 .map(|c| c.name.clone())
                 .unwrap_or_default();
             self.arrangement.cancel_clip_drag();
-            ui.ctx().stop_dragging();
+            ctx.stop_dragging();
             self.switch_hover = None;
             self.carry = Some(Carry { from: CarryFrom::Arrangement { track, clip: id }, name });
         }
+    }
+
+    /// While a clip is carried between the views: the label beside the pointer, Escape to stop,
+    /// and on release a copy of it in the slot or on the lane under the pointer
+    /// (`docs/spec/ui-session-view.md` › Between the views). A clip slot's drag or a press held
+    /// on a clip starts one, in `begin_clip_carry`.
+    pub(super) fn carry_clip(&mut self, ui: &Ui) {
         let carry = self.carry.clone();
         // Ctrl (Cmd on macOS) held at the drop: a copy, as the keymap's rule has it.
         let copy = ui.input(|i| i.modifiers.ctrl || i.modifiers.command);

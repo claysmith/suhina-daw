@@ -905,11 +905,11 @@ fn column_body(
             }
             for response in [&launch, &select].into_iter().flatten() {
                 // A press held on the slot, either control, can be carried by a view switch
-                // before the drag is decided, as a clip's press is in the Arrangement view.
+                // before the drag is decided, as a clip's press is in the Arrangement view. A
+                // press that is let go dies at the frame's start (`begin_clip_carry`), even
+                // when this slot has scrolled away by then.
                 if response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down()) {
                     state.pressed_slot = Some(key);
-                } else if state.pressed_slot == Some(key) {
-                    state.pressed_slot = None;
                 }
                 if response.clicked() || response.secondary_clicked() {
                     state.track_focus = false;

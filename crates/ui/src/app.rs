@@ -2666,6 +2666,9 @@ impl App {
             }
             self.frame_trace.mark("browser");
             let _main_style = crate::kit::style_class::enter_named("workspace-panel", "panel-main");
+            // A clip whose drag or held press the view switch carried becomes the carry first,
+            // so the probe below reads it on the switch's first frame.
+            self.begin_clip_carry(ui.ctx());
             // A drag from the browser, or files from the system: the views say what is under the
             // pointer.
             let dragged = self.browser.drag.as_ref().or(system.as_ref().map(|(items, _)| items));
