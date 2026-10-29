@@ -3,7 +3,7 @@ description: Checking for a newer build of Suhina and installing it from inside 
 read_when: update, updates, new version available, check for updates, download update, nightly update, auto update, test build, gh, github cli, developer mode
 type: spec
 status: draft
-last_verified: 2026-10-19
+last_verified: 2026-10-28
 covers:
   - crates/update/src/lib.rs
   - crates/update/src/version.rs
@@ -23,7 +23,7 @@ running one and restarts Suhina.
 
 ## What is sent
 
-The check only reads. When Settings › General › Updates › *Check for updates* is on (the default),
+The check only reads. When Settings › Agents and updates › Updates › *Check for updates* is on (the default),
 Suhina asks GitHub once per start, in the background, which build is the newest in its channel:
 
 - **Nightly:** `GET https://api.github.com/repos/suhina-daw/suhina-daw/releases/tags/nightly`
@@ -82,13 +82,19 @@ The new files go where the running `suhina` is: the folder the package was unpac
 - **macOS and Linux:** each new file is moved over the old one. The running program keeps the old
   file open until it quits, so nothing breaks while it runs. The executable bit comes from the
   package.
+- **macOS, in `Suhina.app`:** the bundle is replaced whole, since its signature covers every file in
+  it. The download is staged beside the bundle (in Applications, when it was put there), the
+  running bundle is renamed to `Suhina.app.old` and the new one moved in its place; if the move
+  fails the old one is put back. The next start deletes `Suhina.app.old`, and nothing else beside
+  it. A build run from outside a bundle (one unpacked before the packages had one) takes the
+  files from the new package's `Suhina.app/Contents/MacOS` into its own folder.
 
 The packages are not signed (releasing.md › Packages), so the update is as trusted as the
 download page: the checksum catches a broken download, not a replaced release.
 
 ## Channels
 
-Settings › General › Updates › *Channel*:
+Settings › Agents and updates › Updates › *Channel*:
 
 - **Nightly** (the default): the `nightly` release.
 - **Test builds:** only listed in developer mode (*Developer mode* on, or when the running build is

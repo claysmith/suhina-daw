@@ -109,8 +109,10 @@ fn a_dropped_clip_replaces_what_it_covers_unless_midi_stacking_is_on() {
 fn dragging_a_clip_down_moves_it_to_the_next_track() {
     let mut harness = arrangement_app();
     let from = harness.get_by_label("Clip Beat B on Drums at bar 17").rect().center_top() + egui::vec2(0.0, 6.0);
-    // Lanes are 48 points high with a line between them.
-    let to = from + egui::vec2(0.0, 49.0);
+    // Move to the next track using the drawn geometry, independent of UI density.
+    let drums = harness.get_by_label("Track Drums").rect();
+    let bass = harness.get_by_label("Track Bass").rect();
+    let to = from + egui::vec2(0.0, bass.top() - drums.top());
     harness.hover_at(from);
     harness.run();
     harness.drag_at(from);
@@ -313,9 +315,9 @@ fn a_click_on_the_ruler_moves_the_play_start_marker_on_the_grid() {
     // With Stop set to stay, the marker moves to where it stopped.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
     harness.run();
-    harness.get_by_label("Settings page: Transport").click();
+    harness.get_by_label("Settings page: Arrangement").click();
     harness.run();
-    harness.get_by_label("Stop: Stay").click();
+    harness.get_by_label("Playhead after Stop: Stay").click();
     harness.run();
     assert_eq!(
         harness.state_mut().take_changed_settings().map(|s| s.stop),
@@ -348,7 +350,7 @@ fn play_starts_from_the_selected_clip_with_shift_space_or_the_setting() {
         render_a_block(renderer);
     };
 
-    // By default Play starts from the selected clip: picked whole, by its name bar.
+    // By default Where Play starts the selected clip: picked whole, by its name bar.
     click_name_bar(&mut harness, "Clip Beat B on Drums at bar 17");
     harness.get_by_label("Play").click();
     harness.run_steps(2);
@@ -370,7 +372,7 @@ fn play_starts_from_the_selected_clip_with_shift_space_or_the_setting() {
     // With Play from set to the selected clip, Space and the Play button start there too.
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
     harness.run();
-    harness.get_by_label("Settings page: Transport").click();
+    harness.get_by_label("Settings page: Arrangement").click();
     harness.run();
     harness.get_by_label("Play from: Marker").click();
     harness.run();
@@ -410,7 +412,7 @@ fn play_starts_from_the_selected_clip_with_shift_space_or_the_setting() {
     assert_eq!((monitor.running(), monitor.start_beat()), (true, 72.0));
     stop(&mut harness, &mut renderer);
 
-    // In the Session view the selection is not shown, so Play starts from the marker; stopping
+    // In the Session view the selection is not shown, so Where Play starts the marker; stopping
     // again first puts the marker at the beginning.
     stop(&mut harness, &mut renderer);
     assert_eq!(monitor.start_beat(), 0.0);
@@ -642,8 +644,9 @@ fn menus_delete_a_track_and_duplicate_a_clip() {
 fn dragging_a_header_moves_the_track() {
     let mut harness = arrangement_app();
     let from = harness.get_by_label("Track Vox").rect().center();
-    // Three lanes up (49 points each), into the upper half of Drums.
-    let to = from - egui::vec2(0.0, 3.0 * 49.0 + 14.0);
+    // Target the upper half of the first track, independent of lane height.
+    let drums = harness.get_by_label("Track Drums").rect();
+    let to = egui::pos2(from.x, drums.top() + drums.height() * 0.2);
     harness.hover_at(from);
     harness.run();
     harness.drag_at(from);
@@ -678,6 +681,14 @@ fn groups_nest_fold_and_take_tracks_from_the_menu_and_by_dragging() {
     harness.run();
     assert_eq!(names(&harness)[..3], ["Group", "Group", "Drums"]);
     assert_eq!(parent_name(&harness, "Drums").as_deref(), Some("Group"));
+
+    // Ancestor bands stay aligned while each deeper level becomes thinner.
+    let groups: Vec<_> = harness.get_all_by_label("Group colour").map(|node| node.rect()).collect();
+    let drums = harness.get_by_label("Drums colour").rect();
+    assert_eq!(groups.len(), 2);
+    assert_eq!((groups[0].width(), groups[1].width(), drums.width()), (6.0, 4.0, 3.0));
+    assert_eq!(groups[1].left() - groups[0].left(), 8.0);
+    assert_eq!(drums.left() - groups[1].left(), 6.0);
 
     // Keys into the outer group from its menu.
     harness.get_by_label("Track Keys").click_secondary();
@@ -1077,8 +1088,7 @@ fn a_double_click_on_an_empty_spot_of_a_midi_lane_makes_a_bar_long_clip_on_the_g
 
 #[test]
 fn a_critical_command_from_the_window_is_backed_up_first() {
-    let dir = std::env::temp_dir().join(format!("suhina-ui-critical-{}", std::process::id()));
-    let _fresh = std::fs::remove_dir_all(&dir);
+    let dir = crate::temp_dir::TempDir::new("ui-critical");
     let file = dir.join("Song.suhina");
     Session::new(demo_project()).save(&file, false).unwrap();
     let mut app = App::new();
@@ -1098,7 +1108,6 @@ fn a_critical_command_from_the_window_is_backed_up_first() {
         .collect();
     kept.sort();
     assert_eq!(kept, [tracks, tracks + 1]);
-    let _clean = std::fs::remove_dir_all(&dir);
 }
 
 #[test]

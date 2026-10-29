@@ -83,6 +83,7 @@ the documents that match your task.
 ```text
 crates/
   model    L0 DAW-neutral project as pure data (tracks, channels, clip contents, clips, launcher)
+  style    L0 native style sheets, scoped selectors, typed values, cascade, Taffy layout and source edits; no GUI or I/O
   stretch  L0 time-stretching and pitch-shifting DSP: a pure-Rust port of Signalsmith Stretch (MIT)
   engine   L1 offline/real-time rendering of notes and audio clips, real-time time-stretching (ADR 0003)
            and the clip launcher; no file I/O
@@ -98,6 +99,8 @@ crates/
   soundmap L2 the sample map: features of samples, layouts by how they sound (t-SNE), grids, kinds, the feature cache
   update   L2 updates: whether a newer nightly or test build is out (GitHub, through the system's
            curl), downloading it, checking its SHA-256 and putting it in place of the running build
+  theme-package L1 theme packages (.theme.suhina): a theme's files with a SHA-256 manifest, packed, read
+           and validated; used by the app's export and import and suhina-cli theme
   separation L2 stem separation: chunking, weighted overlap-add and resampling around an inference backend
              trait, and a deterministic test backend (a band splitter); no model or commands yet (#146)
   session  L2 open projects (tabs, ADR 0007), undo history, the command registry (ADR 0002), the
@@ -111,7 +114,7 @@ crates/
   midi     L3 MIDI controllers: lists the input ports and opens them (midir); their notes play the armed
            tracks' instruments (ADR 0017)
   ui       L3 the main window, the browser and the views (egui, ADR 0009); every change is a command
-  dsp      L0 signal-processing blocks for built-in effects and instruments: smoothing, filters, crossovers, LFOs, shapers, oversampling, delay lines (ADR 0004)
+  dsp      L0 signal-processing blocks for built-in effects and instruments: smoothing, attack/release followers, filters, crossovers, LFOs and tempo sync, shapers, oversampling, delay lines (ADR 0004)
   device-api L0 the Device trait, parameter descriptions, contract tests every device runs
   device-sdk L0 builds and validates data-only `.sd` effect graphs, compiles DSP primitives and delayed feedback for real-time execution; shared node contracts and embedded custom UI canvases/images for authors and agents; the layouts of
            built-in devices (`builtin`: the UI part only, no graph); native sampler tempo synchronisation uses stretch
@@ -127,6 +130,7 @@ devices/
   utility  gain, balance, width, mono, bass mono, phase, channels, DC filter; depends on dsp, device-api
   auto-pan LFO panning and tremolo, free in Hz or synced to the song position
   dj-eq    three bands with kills, Linkwitz-Riley crossovers at 24 or 48 dB/octave
+  eq       eight bands (cuts, shelves, bells, notch) on state-variable filters, two curves: Stereo, L/R, M/S
   vinyl-distortion  tracing (even), pinch (odd, out of phase) and crackle, oversampled
   overdrive  pedal-style: band, drive, tone, dynamics, dry/wet; oversampled
   compressor stereo-linked, soft knee, side-chain high-pass, attack/release, dry/wet
@@ -139,7 +143,8 @@ devices/
   pitch    MIDI effect: transposes notes by semitones or scale degrees, keeps them in a key window (Block, Fold, Limit)
 apps/
   suhina-cli   headless CLI: render, play, mcp, commands, audio, plugins, plugin, fm-synth
-  suhina       the desktop app (eframe): opens a project and shows it in the ui
+  suhina       the desktop app (eframe): opens a project and shows it in the ui;
+               theme file operations and live reload run on one background worker
 docs/
   architecture.md  how the crates, threads and commands fit together
   decisions/  architecture decision records; read 0001 before changing the model, 0004 before a device
@@ -151,12 +156,14 @@ docs/
   INDEX.md    generated list of documents, one line each (scripts/docs.py find and covers query it)
   commands.md generated list of every command (suhina-cli commands --markdown)
 assets/brand/ the logo as SVG: `suhina-logo.svg` (the name with the wave, drawn on the splash by
-              `crates/ui/src/kit/logo.rs`) and `suhina-mark.svg` (the wave mark alone, for icons)
+              `crates/ui/src/kit/logo.rs`) and `suhina-mark.svg` (the wave mark alone, for icons);
+              `suhina-icon.png`, the app's icon (`Suhina.app` on macOS, by `scripts/macos_app.sh`)
 third_party/  vendored source: the ASIO SDK's host part (GPL-3.0, built with `asio`) and LAME 3.100's
               encoder (LGPL, always built for MP3 export; Suhina's own fft.c, ADR 0029)
 scripts/   research helpers (e.g. extracting and diffing .als files), the parity measurement
            (parity/, reading a manual the user owns; its output is never committed), docs.py
-           (the docs index), release_notes.py and discord_post.py (release notes, Discord posts)
+           (the docs index), release_notes.py and discord_post.py (release notes, Discord posts),
+           agent_post.py (an agent's issue or PR comment, as the bot or as the person, § 3)
 ```
 
 A crate may depend only on crates in its own or a lower layer, never in a cycle. Nothing below
@@ -223,6 +230,25 @@ Several agents often run at once, so an agent never starts work that exists alre
 
 - **Before opening an issue**, search the open issues for the same problem; when one exists,
   comment there instead.
+- **Check access before posting as the bot.** The two bot workflows below can be started only by
+  an account with write access. Before either, check the person's account once:
+  `gh api repos/suhina-daw/suhina-daw --jq .permissions.push` (or the GitHub MCP's repository
+  permissions). `true`: use the workflow. `false`: post from the person's own account, as the next
+  bullets say, and tell the user it went out under their account and why. A dispatch answered
+  `HTTP 403: Must have admin rights to Repository` means the same as `false` (GitHub's message
+  names the wrong right): fall back, never retry it or try another token.
+  [`scripts/agent_post.py`](scripts/agent_post.py) makes the check and takes either path, from the
+  same `request.json` the workflows take, and prints `OPENED_ISSUE=#N <url>` or
+  `COMMENTED_PR=#N <url>` both ways:
+
+  ```sh
+  python scripts/agent_post.py issue request.json     # or: comment request.json
+  ```
+
+  If the workflow posted but its successful completion could not be confirmed, the helper exits
+  with an error that includes the created issue or comment's marker and the run id. Inspect that
+  run and complete any missing follow-up; do not post again.
+
 - **Open an issue as the bot.** An agent with write access to this repository opens issues
   through the [Open issue](.github/workflows/open-issue.yml) workflow, not as the person it runs
   for, so the issue's author is `suhina-bot[bot]`. Start it with the GitHub MCP's
@@ -247,6 +273,14 @@ Several agents often run at once, so an agent never starts work that exists alre
   and the issue type; `labels` are the area and platform labels; `parent` is an open epic. Set the
   board's Priority and Phase afterwards. A pull request itself — its branch, its description and
   its merge — stays under the person's account.
+
+  Without write access, open it with `gh issue create --body-file` under the person's account,
+  identifying it as AI-assisted. Before opening it, check that a supplied parent is an open issue
+  labelled `epic`, as the workflow does; if the parent cannot be checked, stop before posting.
+  With `triage` access (`.permissions.triage`) give it the type label and the area labels, set its
+  issue type and add it under the parent epic, as the workflow would. Without triage, leave the
+  labels out: the body ends with the labels a maintainer should add, and `Part of #N` names the
+  parent, since the account cannot link a sub-issue.
 - **Use the caller's existing access; do not request elevated access to post.** The two bot
   workflows require repository write access, not admin access. Their posting rules apply only
   when the caller already has the required access and the configured connector permits the action.
@@ -265,7 +299,9 @@ Several agents often run at once, so an agent never starts work that exists alre
   comment, not a GitHub review: it neither approves nor requests changes, and no merge rule sees
   it; approving stays the maintainer's `ready to merge` label. Start it the same way,
   with the inputs as JSON on stdin, and read `COMMENTED_PR=#N <url>` from the log of the run the
-  start returns. Re-running a failed run does not comment twice.
+  start returns. Re-running a failed run does not comment twice. Without write access, post it
+  with `gh pr comment <N> --body-file …` under the person's account, ending with a line that
+  says an agent wrote it.
 
   ```sh
   python -c "import json; print(json.dumps({'pr': '600', \
@@ -347,6 +383,10 @@ its layout, or the generated parameter list. Report the app's path. Do this auto
 waiting for a separate rebuild request.
 
 
+**A new or moved setting follows [`docs/spec/ui-settings.md`](docs/spec/ui-settings.md) › Adding a setting**
+(page by task, groups of at most seven outside Advanced, no status or commands among settings, one
+sentence of description, one control per kind of choice, the stored key unchanged).
+
 **A change in what Suhina does comes with steps to check it.** When a pull request changes
 anything a user sees, hears or does, in the app or outside it (a view, a menu, a dialog, a
 shortcut, a setting, drag and drop, playback and sound, a file it opens, imports or writes, a
@@ -387,6 +427,25 @@ coverage writes `Parity: no change` and the reason in its description ("Parity: 
 refactor"). When a pull request changes `crates/`, `devices/` or `apps/` and does neither, the
 [Parity notice](.github/workflows/parity-notice.yml) check warns; it does not fail.
 
+**Settings include their website help.** Whenever you add, remove, move, rename or change a
+setting, complete its guide update automatically in the same pull request. Read
+[`docs/spec/settings-guide-export.md`](docs/spec/settings-guide-export.md), the control in
+`crates/ui/src/settings/settings_rows.rs` and its implementation. Update
+`docs/guide-data/settings-help.json`: description, summary when present, every choice's name
+and explanation, when to change it, implementation references and any work-in-progress status.
+Explain grouped controls, defaults, dependencies and when a control has no effect. Migrate IDs
+for moved settings and remove help for deleted settings. Review behavior changes even when
+the registry metadata and fingerprint stay unchanged. Copy the current source fingerprint
+only after reviewing the text; never refresh fingerprints merely to make CI pass.
+
+Run `python scripts/settings_guide.py` and commit `docs/guide-data/settings.json` with the
+authored help. This export is intentionally committed, unlike the generated files below.
+Then run `python scripts/settings_guide.py --check` and
+`python -m unittest discover -s scripts -p 'test_settings_guide.py'`. Check every changed
+setting, not just the first error: the exporter stops at the first missing or stale entry.
+Do not defer the guide to another repository or a follow-up, and do not wait for a separate
+request to document a setting.
+
 **Documentation is part of the change.** A pull request that changes how something works updates,
 in the same pull request, every document that describes it, so the docs never describe code
 that no longer exists. [`docs/README.md`](docs/README.md) says what each kind of document holds
@@ -402,6 +461,7 @@ that no longer exists. [`docs/README.md`](docs/README.md) says what each kind of
 | MCP tools, or how agents use commands | [`docs/mcp.md`](docs/mcp.md) (the command list, [`docs/commands.md`](docs/commands.md), is generated) |
 | What works for users | [`ROADMAP.md`](ROADMAP.md) › What works now, and [`README.md`](README.md) if it shows it |
 | What the parity measurement says (a milestone that lands, a feature that appears or is dropped) | the coverage of the chapters it changes in `scripts/parity/score.py`; the marked parts of [`docs/research/parity-live-12.md`](docs/research/parity-live-12.md) are regenerated on `main`, and its prose is edited in that file like any other document |
+| A setting in the Settings window (`settings_rows.rs`) | the table and rules in [`docs/spec/ui-settings.md`](docs/spec/ui-settings.md), and `docs/guide-data/settings-help.json` |
 | A rule in this file | this file, and [`CONTRIBUTING.md`](CONTRIBUTING.md) if it repeats it |
 
 A limit or a planned part that a change resolves is removed from the docs in the same change.

@@ -3,7 +3,7 @@ description: The MCP server for agents: tools, file roots, errors and how to run
 read_when: MCP, agents, attach, mcp --attach, agents in the app, live agent edits, allow agent, audio output, MIDI input, arm, record, recording, count-in, audio device, buffer size, ASIO, project_open, command_run, file roots, rmcp, suhina-cli mcp, several projects, project id, plug-in commands, device commands, library commands, add samples, track.add, clip.addFiles, preview, preview.noteOn, preview.noteOff, note.split, mute a note, note.setMuted, note.humanize, note.fitToScale, note.invert, note.reverse, note.legato, note.stretch, note.randomizeVelocity, note.rampVelocity, MIDI tools
 type: system
 status: current
-last_verified: 2026-10-24
+last_verified: 2026-10-28
 covers:
   - crates/automation/src/server.rs
   - crates/automation/src/workspace.rs
@@ -344,7 +344,7 @@ suhina-cli mcp --read-root ./projects --write-root ./renders [--audio]
 
 - **Devices.** `device.list` lists the built-in effects and instruments with every parameter (id, range,
   default, unit, options); `track.devices` lists a track's devices with their values;
-  `device.add`, `device.addSd {track, path, position?}`, `device.remove`, `device.setEnabled` and `device.setParam` (through
+  `device.add`, `device.addSd {track, path, sample?, position?}`, `device.remove`, `device.setEnabled` and `device.setParam` (through
   `command_run`) edit a track's chain, one undo step each ([ADR 0004](decisions/0004-built-in-devices.md)).
   `device.setParam` sets a plug-in device's parameter too, by the id `device.pluginParams` lists
   (a running plug-in's parameters with their ranges, default, value and the plug-in's own
@@ -461,14 +461,14 @@ suhina-cli mcp --attach
   network port. Test builds in different folders do not meet. Starting a build's `suhina` while it
   runs opens the project as a tab in the running window instead (`suhina --new-instance` starts
   another window, which serves no agents).
-- **The person lets agents in.** Nothing listens until **Settings › General › Agents › Let agents
+- **The person lets agents in.** Nothing listens until **Settings › Agents and updates › Agents › Let agents
   work on open projects** is on. Each connection then waits: the window asks whether to allow the
   client (by the name it gives at `initialize`), and tool calls wait for the answer; Deny ends the
   connection. The control bar shows each agent let in with a **Disconnect** button.
 - **Tabs.** The agent works on the window's tabs: `project.list`, `project.switch` and the
   `project` argument act on them. `project_open` is refused (the person opens projects), and so is
   `project.close`: closing loses a tab's unsaved changes and its undo history.
-- **Files.** Settings › Export controls where attached agents may write (`project.save`,
+- **Files.** Settings › Agents and updates controls where attached agents may write (`project.save`,
   `project.export`, `project_render`, `project.autosave` with `now`). The project's folder is
   allowed by default; the person can turn that grant off and add or remove other folders.
   Each grant includes subfolders and persists across restarts. Relative write paths start in
@@ -523,6 +523,18 @@ empty list clears the map. Optional `continue` groups consecutive drag edits.
 
 `device.updateSd` applies the same read-root confinement as `device.addSd` and
 `device.loadSample`, including symlink resolution.
+
+The optional `sample` path on `device.addSd` and `track.add {sd, sample}` binds one audio
+file to the SDK resource key `sample`. Both paths are checked against the caller's read roots,
+including symbolic links. Missing required bindings fail insertion before a project edit.
+The graph remains embedded as device state; its sample reference is a separate model extension,
+so saving, project relocation and missing-file relinking preserve both. Custom Rust hosts can
+supply several named resources through `PreparedSamples`; the desktop command currently binds
+one source. Graphs needing other keys fail clearly rather than loading an arbitrary path.
+
+`device.loadSample` can replace the `sample` source of an SDK graph that already has
+that binding, preserving embedded graph state and parameter values. The replacement
+uses the same read-root confinement and undo path as the built-in sampler.
 
 `device.setNamFile` reads its `path` (a `.nam` model or an impulse response) under the same
 read-root confinement. `project.collect` writes below the write root: its `folder` (made if it

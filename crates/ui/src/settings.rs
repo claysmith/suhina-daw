@@ -4,11 +4,14 @@
 //! The user's settings: what they are, their defaults, and the text file they are kept in
 //! (`key = value` lines, so a person can read and fix it). The app decides where the file lives.
 
+mod gradient_editor;
 pub mod keymap;
 pub mod plugin_manager;
 mod settings_rows;
 pub mod settings_view;
+mod skin_editor;
 pub mod themes;
+pub mod track_sizes;
 pub mod update_settings;
 pub mod view_settings;
 pub mod workflow;
@@ -33,7 +36,7 @@ pub enum OnOpen {
     Replace,
 }
 
-/// What opens when Suhina starts without a project given (Settings › General › At start).
+/// What opens when Suhina starts without a project given (Settings › Projects and backups › Startup project).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum AtStart {
     /// The start panel, with the recent projects and the templates (`start_panel`).
@@ -255,10 +258,42 @@ pub const ZOOMS: (u32, u32) = (50, 200);
 pub const ZOOM: u32 = 100;
 pub const ZOOM_STEP: u32 = 10;
 
+/// How the Settings window explains each setting: its name says what it does, and its one
+/// sentence of description shows as the name's tooltip, as a ? beside the name to point at, or
+/// under the name.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum Descriptions {
+    #[default]
+    Tooltip,
+    Icon,
+    Shown,
+}
+
+impl Descriptions {
+    pub fn param(self) -> &'static str {
+        match self {
+            Self::Tooltip => "tooltip",
+            Self::Icon => "icon",
+            Self::Shown => "shown",
+        }
+    }
+
+    pub fn parse(text: &str) -> Option<Self> {
+        [Self::Tooltip, Self::Icon, Self::Shown].into_iter().find(|d| d.param() == text)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Settings {
+    /// User-owned PNG beneath translucent surfaces; never captures the desktop.
+    pub background_image: String,
     pub animations: bool,
-    pub track_headers: Side,
+    /// How the Settings window explains each setting (Help, beside Close): a tooltip on its name,
+    /// a ? beside it, or the sentence under it.
+    pub setting_descriptions: Descriptions,
+    /// The Arrangement view's track headers: on a side of the user's choosing, or `None` where
+    /// the theme puts them (on the right when it says nothing).
+    pub track_headers: Option<Side>,
     pub graphics: Graphics,
     /// Audio clips moved over others stack (all play) instead of replacing them.
     pub sample_stacking: bool,
@@ -303,6 +338,12 @@ pub struct Settings {
     /// ([docs/spec/nam-amp-and-cab.md]); empty for the defaults the app gives.
     pub nam_models_folder: String,
     pub irs_folder: String,
+    /// Where themes are kept; empty for `themes` in Suhina's data folder. `SUHINA_THEMES` wins
+    /// over it.
+    pub themes_folder: String,
+    /// Where Suhina keeps its settings, keys, recent projects and themes; empty for the default.
+    /// Not written in the settings file, which is kept there: the app names it beside the default.
+    pub data_folder: String,
     /// The browser panel shows, on which side, and how wide (`docs/spec/browser.md`).
     pub browser_open: bool,
     pub browser_side: Side,
@@ -370,7 +411,9 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             animations: true,
-            track_headers: Side::Right,
+            setting_descriptions: Descriptions::Tooltip,
+            background_image: String::new(),
+            track_headers: None,
             graphics: Graphics::Gpu,
             sample_stacking: false,
             midi_stacking: false,
@@ -392,6 +435,8 @@ impl Default for Settings {
             projects_folder: String::new(),
             templates_folder: String::new(),
             nam_models_folder: String::new(),
+            themes_folder: String::new(),
+            data_folder: String::new(),
             irs_folder: String::new(),
             browser_open: true,
             browser_side: Side::Left,
@@ -489,8 +534,9 @@ impl Settings {
     /// The settings as the lines of a settings file.
     pub fn to_text(&self) -> String {
         let headers = match self.track_headers {
-            Side::Left => "left",
-            Side::Right => "right",
+            None => "theme",
+            Some(Side::Left) => "left",
+            Some(Side::Right) => "right",
         };
         let graphics = match self.graphics {
             Graphics::Gpu => "wgpu",
@@ -517,7 +563,7 @@ impl Settings {
             EditorPlacement::DeviceView => "device",
         };
         format!(
-            "# Suhina settings; changed from Options > Settings.\nanimations = {}\ntrack_headers = {headers}\nrenderer = {graphics}\nsample_stacking = {}\nmidi_stacking = {}\nopen_projects = {on_open}\nat_start = {at_start}\nstart_template = {}\nstop = {stop}\nplay_start = {play_from}\ndevice_chain = {devices}\nmixer_controls = {mixer}\nselect_on_launch = {select_on_launch}\nplugin_editors = {editors}\ntheme = {}\nprojects_folder = {}\ntemplates_folder = {}\nnam_models_folder = {}\nirs_folder = {}\nbrowser = {}\nbrowser_side = {browser_side}\nbrowser_width = {}\npreview_autoplay = {}\npreview_volume = {}\ndrop_files = {drop}\nwarp_mode = {}\nmap_layout = {map_layout}\nmap_hover_preview = {}\nmap_max_seconds = {}\nmap_dot_size = {}\nmap_window = {}\nmap_window_rect = {}\naudio_host = {}\naudio_device = {}\naudio_sample_rate = {}\naudio_buffer = {}\naudio_exclusive = {}\naudio_cue_pair = {}\naudio_cue_volume = {}\naudio_input = {}\nzoom = {}\nwaveform_scale = {waveform_scale}\npiano_roll_top = {piano_top}\npiano_roll_grid = {piano_grid}\npiano_roll_toolbar = {piano_toolbar}\nbackup = {}\nbackup_clean_up = {}\n",
+            "# Suhina settings; changed from Options > Settings.\nanimations = {}\ntrack_headers = {headers}\nrenderer = {graphics}\nsample_stacking = {}\nmidi_stacking = {}\nopen_projects = {on_open}\nat_start = {at_start}\nstart_template = {}\nstop = {stop}\nplay_start = {play_from}\ndevice_chain = {devices}\nmixer_controls = {mixer}\nselect_on_launch = {select_on_launch}\nplugin_editors = {editors}\ntheme = {}\nprojects_folder = {}\ntemplates_folder = {}\nnam_models_folder = {}\nirs_folder = {}\nthemes_folder = {}\nbrowser = {}\nbrowser_side = {browser_side}\nbrowser_width = {}\npreview_autoplay = {}\npreview_volume = {}\ndrop_files = {drop}\nwarp_mode = {}\nmap_layout = {map_layout}\nmap_hover_preview = {}\nmap_max_seconds = {}\nmap_dot_size = {}\nmap_window = {}\nmap_window_rect = {}\naudio_host = {}\naudio_device = {}\naudio_sample_rate = {}\naudio_buffer = {}\naudio_exclusive = {}\naudio_cue_pair = {}\naudio_cue_volume = {}\naudio_input = {}\nzoom = {}\nwaveform_scale = {waveform_scale}\npiano_roll_top = {piano_top}\npiano_roll_grid = {piano_grid}\npiano_roll_toolbar = {piano_toolbar}\nbackup = {}\nbackup_clean_up = {}\n",
             on(self.animations),
             on(self.sample_stacking),
             on(self.midi_stacking),
@@ -527,6 +573,7 @@ impl Settings {
             self.templates_folder,
             self.nam_models_folder,
             self.irs_folder,
+            self.themes_folder,
             on(self.browser_open),
             self.browser_width,
             on(self.preview_autoplay),
@@ -569,10 +616,12 @@ impl Settings {
             },
             piano_toolbar = self.toolbar_size.param(),
         ) + &self.view.to_text()
+            + &format!("background_image = {}\n", self.background_image.replace(['\r', '\n'], ""))
             + &format!("agents = {}\n", if self.agents { "on" } else { "off" })
             + &format!("mcp_project_folder = {}\n", if self.mcp_project_folder { "on" } else { "off" })
             + &format!("mcp_write_folders = {}\n", serde_json::json!(self.mcp_write_folders))
             + &format!("auto_arm = {}\n", if self.auto_arm { "on" } else { "off" })
+            + &format!("setting_descriptions = {}\n", self.setting_descriptions.param())
             + &self.updates.to_text()
             + &self.midi_inputs_off.iter().map(|port| format!("midi_input_off = {port}\n")).collect::<String>()
     }
@@ -597,6 +646,7 @@ impl Settings {
             }
             match (key, value) {
                 ("animations", "on" | "off") => settings.animations = value == "on",
+                ("background_image", path) => settings.background_image = path.to_string(),
                 ("sample_stacking", "on" | "off") => settings.sample_stacking = value == "on",
                 ("agents", "on" | "off") => settings.agents = value == "on",
                 ("mcp_project_folder", "on" | "off") => settings.mcp_project_folder = value == "on",
@@ -608,8 +658,9 @@ impl Settings {
                 },
                 ("auto_arm", "on" | "off") => settings.auto_arm = value == "on",
                 ("midi_stacking", "on" | "off") => settings.midi_stacking = value == "on",
-                ("track_headers", "left") => settings.track_headers = Side::Left,
-                ("track_headers", "right") => settings.track_headers = Side::Right,
+                ("track_headers", "theme") => settings.track_headers = None,
+                ("track_headers", "left") => settings.track_headers = Some(Side::Left),
+                ("track_headers", "right") => settings.track_headers = Some(Side::Right),
                 ("device_chain", "row") => settings.device_layout = DeviceLayout::Row,
                 ("device_chain", "stack") => settings.device_layout = DeviceLayout::Stack,
                 ("select_on_launch", "on" | "off") => settings.select_on_launch = value == "on",
@@ -621,6 +672,7 @@ impl Settings {
                 ("templates_folder", folder) => settings.templates_folder = folder.to_string(),
                 ("nam_models_folder", folder) => settings.nam_models_folder = folder.to_string(),
                 ("irs_folder", folder) => settings.irs_folder = folder.to_string(),
+                ("themes_folder", folder) => settings.themes_folder = folder.to_string(),
                 ("open_projects", "ask") => settings.on_open = OnOpen::Ask,
                 ("open_projects", "tab") => settings.on_open = OnOpen::NewTab,
                 ("open_projects", "replace") => settings.on_open = OnOpen::Replace,
@@ -704,6 +756,9 @@ impl Settings {
                     settings.backup = suhina_session::backup::Interval::parse(when).unwrap_or_default();
                 }
                 ("backup_clean_up", "on" | "off") => settings.backup_clean_up = value == "on",
+                ("setting_descriptions", text) if Descriptions::parse(text).is_some() => {
+                    settings.setting_descriptions = Descriptions::parse(text).unwrap_or_default();
+                }
                 ("audio_input", input) => {
                     settings.audio_input = suhina_session::InputChoice::from_text(input).as_text().to_string()
                 }

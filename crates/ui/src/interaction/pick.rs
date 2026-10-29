@@ -11,11 +11,13 @@ use std::path::PathBuf;
 /// The field a chosen path goes into.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PickField {
-    /// Settings › General › Projects folder.
+    /// Settings › Appearance › Background image: a user-owned PNG; no desktop capture.
+    BackgroundImage,
+    /// Settings › Projects and backups › Projects folder.
     ProjectsFolder,
-    /// Settings › General › Templates folder.
+    /// Settings › Projects and backups › Templates folder.
     TemplatesFolder,
-    /// Settings › General › Start template.
+    /// Settings › Projects and backups › Startup template.
     StartTemplate,
     /// The folder of the save prompt (File › Save as…).
     SaveFolder,
@@ -27,21 +29,26 @@ pub enum PickField {
     OpenProject,
     /// A folder for the browser (+ Add folder).
     BrowserFolder,
-    /// Settings › General › NAM models folder (docs/spec/nam-amp-and-cab.md).
+    /// Amp models folder (docs/spec/nam-amp-and-cab.md).
     NamModelsFolder,
-    /// Settings › General › IR folder (docs/spec/nam-amp-and-cab.md).
+    /// Settings › Themes › Themes folder.
+    ThemesFolder,
+    /// Settings › Projects and backups › Settings folder.
+    DataFolder,
+    /// Cabinet sounds folder (docs/spec/nam-amp-and-cab.md).
     IrFolder,
 }
 
 impl PickField {
     /// Whether a folder is picked rather than a file.
     pub fn folder(self) -> bool {
-        !matches!(self, Self::StartTemplate | Self::OpenProject | Self::ExportFile)
+        !matches!(self, Self::StartTemplate | Self::OpenProject | Self::ExportFile | Self::BackgroundImage)
     }
 
     /// The dialog's title.
     pub fn title(self) -> &'static str {
         match self {
+            Self::BackgroundImage => "Background image (PNG)",
             Self::ProjectsFolder => "Projects folder",
             Self::TemplatesFolder => "Templates folder",
             Self::StartTemplate => "Template to start from",
@@ -50,8 +57,10 @@ impl PickField {
             Self::McpWriteFolder => "Allow MCP writes in",
             Self::OpenProject => "Open a project",
             Self::BrowserFolder => "Add a folder to the browser",
-            Self::NamModelsFolder => "NAM models folder",
-            Self::IrFolder => "IR folder",
+            Self::NamModelsFolder => "Amp models folder",
+            Self::ThemesFolder => "Themes folder",
+            Self::DataFolder => "Settings folder",
+            Self::IrFolder => "Cabinet sounds folder",
         }
     }
 
@@ -59,6 +68,7 @@ impl PickField {
     pub fn extensions(self) -> &'static [&'static str] {
         match self {
             Self::ExportFile => &["wav", "flac", "ogg", "mp3"],
+            Self::BackgroundImage => &["png"],
             field if field.folder() => &[],
             _ => &["suhina", "als"],
         }
@@ -68,6 +78,7 @@ impl PickField {
     pub fn filter_label(self) -> &'static str {
         match self {
             Self::ExportFile => "Audio",
+            Self::BackgroundImage => "PNG image",
             _ => "Projects",
         }
     }

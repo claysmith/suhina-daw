@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 //! The start panel: what the window shows right of the browser while no project is open (at
-//! start, as Settings › General › At start › Panel says, and after the last project closes). A
+//! start, as Settings › Projects and backups › Startup project › Panel says, and after the last project closes). A
 //! new project, one from a template, or a recent project, found by name and listed with when it
 //! was last saved; the audio output at a glance; the version. Files dropped on it open as they
 //! do anywhere on the window.
 
+use crate::kit::surface::Backgrounds as _;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
 
@@ -96,9 +97,13 @@ pub fn show(
     notice: Option<&Notice>,
     now: SystemTime,
 ) -> Option<StartChoice> {
+    // `.start-page` styles it; its buttons and fields take the sheet's `.button` and `.text-input`.
+    let _style = crate::kit::style_class::enter("start-page");
+    let mut styled_ui = crate::kit::style_class::ui(ui);
+    let ui = &mut *styled_ui;
     ui.allocate_rect(area, Sense::hover());
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0.0, theme::window_background());
+    crate::kit::native_css::surface(&painter, area, 0.0, theme::window_background());
     let width = (area.width() - 4.0 * PAD).min(MAX_WIDTH);
     let content = Rect::from_min_max(
         Pos2::new(area.center().x - width / 2.0, area.top() + 4.0 * PAD),
@@ -190,7 +195,7 @@ pub fn show(
 /// The update line: its text, a progress bar while downloading, and its buttons on the right.
 fn notice_line(ui: &Ui, painter: &egui::Painter, line: Rect, notice: &Notice) -> Option<StartChoice> {
     let mut choice = None;
-    painter.rect_filled(line, 0.0, theme::panel_background());
+    painter.fill_background(line, 0.0, theme::panel_background());
     let edge = if notice.error { theme::recording() } else { theme::accent() };
     painter.rect_filled(Rect::from_min_size(line.min, Vec2::new(3.0, line.height())), 0.0, edge);
     let mut right = line.right() - PAD;
@@ -216,7 +221,7 @@ fn notice_line(ui: &Ui, painter: &egui::Painter, line: Rect, notice: &Notice) ->
     widgets::text_in(painter, text, Align2::LEFT_CENTER, &notice.text, theme::ui_font(theme::TEXT), colour);
     if let Some(part) = notice.progress {
         let bar = Rect::from_min_size(Pos2::new(text.left(), line.bottom() - 4.0), Vec2::new(text.width(), 2.0));
-        painter.rect_filled(bar, 0.0, theme::control_background());
+        painter.fill_background(bar, 0.0, theme::control_background());
         painter.rect_filled(
             Rect::from_min_size(bar.min, Vec2::new(bar.width() * part, bar.height())),
             0.0,
@@ -232,7 +237,7 @@ fn projects(ui: &mut Ui, area: Rect, state: &mut StartState, lists: &Lists, now:
         return None;
     }
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0.0, theme::panel_background());
+    painter.fill_background(area, 0.0, theme::panel_background());
     painter.rect_stroke(area, 0.0, theme::hairline(theme::border()), egui::StrokeKind::Inside);
     let inner = area.shrink(PAD);
     let mut choice = None;
@@ -259,7 +264,8 @@ fn projects(ui: &mut Ui, area: Rect, state: &mut StartState, lists: &Lists, now:
     if search_width > 60.0 {
         let field =
             Rect::from_min_size(Pos2::new(inner.right() - search_width, inner.top()), Vec2::new(search_width, LINE));
-        let edit = ui.put(
+        let edit = crate::kit::widgets::text_input_at(
+            ui,
             field,
             egui::TextEdit::singleline(&mut state.search).hint_text("Search").font(theme::ui_font(theme::TEXT_SMALL)),
         );
@@ -317,7 +323,10 @@ fn projects(ui: &mut Ui, area: Rect, state: &mut StartState, lists: &Lists, now:
         Tab::Templates => {
             let rows: Vec<&PathBuf> = lists.templates.iter().filter(|p| found(p)).collect();
             let note = Rect::from_min_max(Pos2::new(list.left(), list.bottom() - LINE), list.max);
-            let folder = format!("Templates in {}; the folder is set in Settings › General", lists.templates_folder);
+            let folder = format!(
+                "Templates in {}; the folder is set in Settings › Projects and backups",
+                lists.templates_folder
+            );
             widgets::text_in(&painter, note, Align2::LEFT_CENTER, &folder, small.clone(), theme::text_hint());
             let list = Rect::from_min_max(list.min, Pos2::new(list.right(), note.top() - 4.0));
             if rows.is_empty() {
@@ -351,7 +360,7 @@ fn audio_card(ui: &Ui, area: Rect, audio: &AudioSummary) -> bool {
         return false;
     }
     let painter = ui.painter_at(area);
-    painter.rect_filled(area, 0.0, theme::panel_background());
+    painter.fill_background(area, 0.0, theme::panel_background());
     painter.rect_stroke(area, 0.0, theme::hairline(theme::border()), egui::StrokeKind::Inside);
     let inner = area.shrink(PAD);
     heading(&painter, Rect::from_min_size(inner.min, Vec2::new(inner.width(), 0.0)), "Audio");

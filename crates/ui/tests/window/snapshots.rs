@@ -122,7 +122,7 @@ fn render_the_session_window() {
     harness.run();
     harness.key_press_modifiers(Modifiers::COMMAND, Key::Comma);
     harness.run();
-    harness.get_by_label("Settings page: Theme").click();
+    harness.get_by_label("Settings page: Themes").click();
     harness.run();
     harness.remove_cursor();
     harness.run();
@@ -134,13 +134,13 @@ fn render_the_session_window() {
     harness.run();
     let image = harness.render().unwrap_or_else(|e| panic!("render failed: {e}"));
     image.save(folder.join("settings-arrangement.png")).unwrap_or_else(|e| panic!("{e}"));
-    harness.get_by_label("Settings page: Shortcuts").click();
+    harness.get_by_label("Settings page: Keys").click();
     harness.run();
     harness.remove_cursor();
     harness.run();
     let image = harness.render().unwrap_or_else(|e| panic!("render failed: {e}"));
     image.save(folder.join("shortcuts.png")).unwrap_or_else(|e| panic!("{e}"));
-    harness.get_by_label("Settings page: General").click();
+    harness.get_by_label("Settings page: Projects and backups").click();
     harness.run();
 
     let mut harness = Harness::builder()
