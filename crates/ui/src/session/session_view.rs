@@ -65,6 +65,10 @@ pub struct SessionViewState {
     /// A clip slot whose drag started this frame (track, scene from 0): the window carries the
     /// clip from there (`docs/spec/ui-session-view.md` › Between the views).
     pub slot_drag: Option<(TrackId, usize)>,
+    /// A clip slot a press is held on (track, scene from 0), before the pointer has moved
+    /// enough for the drag to be decided: the view may switch under the held press (Tab), and
+    /// the press then carries the clip like a drag does.
+    pub pressed_slot: Option<(TrackId, usize)>,
     /// Launching a clip leaves the selection as it is (Settings › Detail area › Select on
     /// launch is off); by default a launch selects the clip.
     pub keep_selection_on_launch: bool,
@@ -749,6 +753,15 @@ fn column_body(
             response.widget_info(|| egui::WidgetInfo::labeled(egui::WidgetType::Button, true, &label));
             response
         });
+        // A press held on the clip's name selects the slot at once, as the click will: a drag
+        // from it starts as a drag, and a view switch under the held press (Tab) carries the
+        // clip before the pointer has moved enough for the drag to be decided.
+        if let Some(select) = &select
+            && select.is_pointer_button_down_on()
+            && ui.input(|i| i.pointer.primary_down())
+        {
+            state.select_slot(column.track, scene);
+        }
         let hover = [&launch, &select].into_iter().flatten().map(|r| widgets::hover(ui, r)).fold(0.0, f32::max);
         let pulse = if slot.state == SlotState::Queued { motion::pulse(ui.ctx()) } else { 1.0 };
         // The launch button launches as the pointer goes down, and releases a gate or repeat
@@ -790,6 +803,13 @@ fn column_body(
                 ui.ctx().data_mut(|d| d.remove::<String>(Id::new(("slot-rename", column.track, number))));
             }
             for response in [&launch, &select].into_iter().flatten() {
+                // A press held on the slot, either control, can be carried by a view switch
+                // before the drag is decided, as a clip's press is in the Arrangement view.
+                if response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down()) {
+                    state.pressed_slot = Some(key);
+                } else if state.pressed_slot == Some(key) {
+                    state.pressed_slot = None;
+                }
                 if response.clicked() || response.secondary_clicked() {
                     state.track_focus = false;
                 }

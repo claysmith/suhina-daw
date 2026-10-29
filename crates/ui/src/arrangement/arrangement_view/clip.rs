@@ -287,6 +287,13 @@ pub(super) fn clip_box<'a>(
         // The track being worked on: a folded group shows this track while it is one of its own.
         state.targeted = Some(lane.track);
     }
+    // A press held on the clip before the pointer has moved enough for the drag to be decided:
+    // the view may switch under it (Tab), and the press then carries the clip like a drag.
+    if response.is_pointer_button_down_on() && ui.input(|i| i.pointer.primary_down()) {
+        state.pressed_clip = Some(key);
+    } else if state.pressed_clip == Some(key) {
+        state.pressed_clip = None;
+    }
     if response.drag_started_by(egui::PointerButton::Primary) && !selects_time {
         state.clip_drag = Some(ClipDrag {
             track: lane.track,

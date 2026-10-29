@@ -234,8 +234,7 @@ impl App {
     }
 
     /// Switches to `hovered`, the view whose name a dragged or carried clip is over, once it has
-    /// stayed there for [`SWITCH_HOVER`]; a clip dragged in the Arrangement view is carried from
-    /// then on.
+    /// stayed there for [`SWITCH_HOVER`].
     pub(super) fn hover_switch(&mut self, ctx: &egui::Context, hovered: Option<View>) {
         let Some(view) = hovered else {
             self.switch_hover = None;
@@ -254,29 +253,25 @@ impl App {
             return;
         }
         self.switch_hover = None;
-        if self.carry.is_none()
-            && let Some((track, id)) = self.arrangement.dragged_clip()
-        {
-            let name = self
-                .timeline
-                .as_ref()
-                .and_then(|(_, _, t)| t.lanes.iter().find(|l| l.track == track))
-                .and_then(|l| l.clips.iter().find(|c| c.id == id))
-                .map(|c| c.name.clone())
-                .unwrap_or_default();
-            self.arrangement.cancel_clip_drag();
-            ctx.stop_dragging();
-            self.carry = Some(Carry { from: CarryFrom::Arrangement { track, clip: id }, name });
-        }
         self.shown = view;
         self.close_large_map();
     }
 
     /// While a clip is carried between the views: the label beside the pointer, Escape to stop,
     /// and on release a copy of it in the slot or on the lane under the pointer
-    /// (`docs/spec/ui-session-view.md` › Between the views). A clip slot's drag starts one.
+    /// (`docs/spec/ui-session-view.md` › Between the views). A clip slot's drag starts one; so
+    /// does a press held on one when the view switched away from the Session, and a clip
+    /// dragged in the Arrangement view when the view shown switches away from it
+    /// while the drag is live — Tab, the mapping mode or the hover over the other view's name:
+    /// the dragged clip's widget is no longer drawn there, so the drag goes on as a carry.
     pub(super) fn carry_clip(&mut self, ui: &Ui) {
-        if let Some((track, scene)) = self.view.slot_drag.take() {
+        let mut from_slot = self.view.slot_drag.take();
+        if from_slot.is_none() && self.shown == View::Arrangement {
+            // A press held on a slot's clip when the view switched away from the Session —
+            // Tab, before the drag was even decided — carries it the same way.
+            from_slot = self.view.pressed_slot.take();
+        }
+        if let Some((track, scene)) = from_slot {
             let name = self
                 .session()
                 .and_then(|s| {
@@ -288,6 +283,22 @@ impl App {
                 .unwrap_or_default();
             ui.ctx().stop_dragging();
             self.carry = Some(Carry { from: CarryFrom::Slot { track, scene }, name });
+        }
+        if self.carry.is_none()
+            && self.shown == View::Session
+            && let Some((track, id)) = self.arrangement.dragged_clip()
+        {
+            let name = self
+                .timeline
+                .as_ref()
+                .and_then(|(_, _, t)| t.lanes.iter().find(|l| l.track == track))
+                .and_then(|l| l.clips.iter().find(|c| c.id == id))
+                .map(|c| c.name.clone())
+                .unwrap_or_default();
+            self.arrangement.cancel_clip_drag();
+            ui.ctx().stop_dragging();
+            self.switch_hover = None;
+            self.carry = Some(Carry { from: CarryFrom::Arrangement { track, clip: id }, name });
         }
         let carry = self.carry.clone();
         // Ctrl (Cmd on macOS) held at the drop: a copy, as the keymap's rule has it.

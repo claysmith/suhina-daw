@@ -970,6 +970,11 @@ impl App {
         self.arrangement.selected_clip()
     }
 
+    /// The slot selected in the Session view: its track and scene (from 0).
+    pub fn selected_slot(&self) -> Option<(TrackId, usize)> {
+        self.view.selected_slot
+    }
+
     /// The Arrangement view's state: what is selected, how far it is scrolled and which groups are
     /// folded. The view draws itself from it, and the window's tests read it.
     pub fn arrangement(&self) -> &ArrangementViewState {
