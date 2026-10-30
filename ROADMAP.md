@@ -471,8 +471,10 @@ From Live Sets we authored ourselves in Live 12.4 ([format spec](docs/spec/als-f
 - Still to do: checking an imported Live Set
   with real plug-ins ([#112](https://github.com/suhina-daw/suhina-daw/issues/112)), Wayland and
   macOS editors, VST2 hosting — decided in
-  [ADR 0022](docs/decisions/0022-vst2-interface-description.md) (VeSTige, pinned) and begun
-  with the interface layer, the mock and the probe
+  [ADR 0022](docs/decisions/0022-vst2-interface-description.md) (VeSTige, pinned) and built
+  behind the `vst2` feature: the interface layer, the mock and the probe, and the host that
+  runs a VST2 plug-in on the same boundary as the other formats; scanning and a project's
+  choice of it are still to come
   ([#1066](https://github.com/suhina-daw/suhina-daw/issues/1066),
   [spec](docs/spec/plugin-vst2.md)).
 
