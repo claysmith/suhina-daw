@@ -21,6 +21,7 @@ x11rb::atom_manager! {
         WM_PROTOCOLS,
         WM_DELETE_WINDOW,
         _NET_WM_NAME,
+        _NET_WM_PID,
         UTF8_STRING,
     }
 }
@@ -102,6 +103,13 @@ impl Window {
                     b"suhina-plugin-editor\0Suhina\0",
                 )
                 .map_err(error)?;
+            // Which process the editor belongs to: a window manager's reader, and the tests',
+            // which must take a window of its host and no other's.
+            if let Ok(id) = u32::try_from(std::process::id()) {
+                connection
+                    .change_property32(PropMode::REPLACE, window, atoms._NET_WM_PID, AtomEnum::CARDINAL, &[id])
+                    .map_err(error)?;
+            }
             if let Some(owner) = super::owner().and_then(|o| u32::try_from(o).ok()) {
                 // Floats above the engine's window and goes with it.
                 connection
@@ -180,6 +188,13 @@ impl Window {
                     b"suhina-plugin-editor\0Suhina\0",
                 )
                 .map_err(error)?;
+            // Which process the editor belongs to: a window manager's reader, and the tests',
+            // which must take a window of its host and no other's.
+            if let Ok(id) = u32::try_from(std::process::id()) {
+                connection
+                    .change_property32(PropMode::REPLACE, window, atoms._NET_WM_PID, AtomEnum::CARDINAL, &[id])
+                    .map_err(error)?;
+            }
             connection.map_window(window).map_err(error)?;
             connection.flush().map_err(error)?;
             Ok(())
