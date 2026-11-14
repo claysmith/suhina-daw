@@ -20,6 +20,7 @@ use serde_json::{Value, json};
 
 use crate::CommandError;
 use crate::commands::{Args, CommandKind, CommandSpec, ParamType, param};
+use crate::extensions::programs::Shared;
 use crate::{Agents, Policy, Projects};
 
 /// The manifest's caps (`docs/spec/extensions.md` › The manifest): a manifest is input like any
@@ -566,6 +567,25 @@ impl Extensions {
         }
         drop(queue);
         self.drain_events().into_iter().find(|(_, event)| which(event))
+    }
+
+    /// The programs' shared event queue and its signal, for the tests' frame pump.
+    pub(crate) fn event_queue(&self) -> Shared {
+        self.known
+            .iter()
+            .filter_map(|extension| extension.program.as_ref())
+            .find_map(|program| Some(program.shared()))
+            .expect("a running program")
+    }
+
+    /// Whether the queue already holds an event that answers `which`, without waiting: the
+    /// tests' frame pump alternates this with a look of the session's own.
+    pub fn has_event(&mut self, mut which: impl FnMut(&programs::Event) -> bool) -> bool {
+        self.known.iter().filter_map(|extension| extension.program.as_ref()).any(|program| {
+            let (queue, _) = &*program.shared();
+            let queue = queue.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            queue.iter().any(|e| which(e))
+        })
     }
 
     /// Blocks until a running program's queue holds an event that answers `which`, and leaves

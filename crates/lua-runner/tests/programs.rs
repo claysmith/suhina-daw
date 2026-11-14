@@ -437,7 +437,71 @@ fn a_fader_storm_lands_at_its_last_value() {
     assert_eq!(tracks[0]["volume_db"], json!(2.5), "{tracks}");
 }
 
-/// The device replugged: a port that vanished and came back re-enumerates, and its
+/// The storm through the real pipeline: the CCs arrive through the supervisor, the commands
+/// queue, and the session coalesces each look. The volume lands at the last value's dB and the
+/// program stays alive. The test pumps the frame while the pipeline catches up — each pump
+/// services the session, and the assertion (the landed volume) does not depend on when the
+/// threads run.
+#[test]
+fn a_fader_storm_through_the_pipeline_lands_at_its_last_value() {
+    let mut fixture = Fixture::claiming("pipeline", SCRIPT_FADER_PIPELINE);
+    fixture.start();
+    fixture.expect(|e| *e == programs::Event::Running, "running");
+    fixture.projects.poll_plugins();
+    // The storm: 100 CCs of one gesture, injected as fast as the fake device can.
+    for value in 0..100 {
+        let cc = 64 + (value % 64);
+        fixture.midi.play("APC in", 1, &[0xB0, 0x07, cc]);
+    }
+    // The frame pump: each frame services the session at the app's pace; the storm's last
+    // marker (the send-back that says CC 99 ran) ends the wait.
+    let ran = fixture.projects.test_extensions_pump_until(
+        |e| matches!(e, programs::Event::SendBack { bytes, .. } if bytes.as_slice() == [0xB1, 99, 1]),
+        4000,
+    );
+    if !ran {
+        // Where the chain stopped: the highest value whose marker made it into the queue, and
+        // how many of the storm's commands are still sitting there unanswered.
+        let mut highest = None;
+        for value in (64..99).rev() {
+            let marker = [0xB1, value, 1];
+            if fixture.projects.test_extensions_has_event(
+                |e| matches!(e, programs::Event::SendBack { bytes, .. } if bytes.as_slice() == &marker),
+            ) {
+                highest = Some(value);
+                break;
+            }
+        }
+        let commands = fixture.projects.test_extensions_has_event(|e| matches!(e, programs::Event::Command { .. }));
+        let info = fixture.projects.execute("extensions.info", &json!({ "id": "pipeline" })).expect("info");
+        panic!(
+            "the storm's last command never ran: the highest marker {highest:?}, commands still queued: {commands}, state: {}, lastError: {:?}",
+            info["state"], info["lastError"]
+        );
+    }
+    let tracks = fixture.projects.execute("project.tracks", &json!({})).expect("read");
+    // CC 99 is -60 + 99/127 of the fader's range: -8.6 dB.
+    assert_eq!(tracks[0]["volume_db"], json!(-8.6), "{tracks}");
+}
+
+/// The fader through the pipeline: each CC of one gesture runs the volume command and marks
+/// its value back, so a test can wait for the storm's last one.
+const SCRIPT_FADER_PIPELINE: &str = r#"
+suhina.on_port_message(function(bytes, port, timestamp)
+    local message = suhina.midi.parse(bytes)
+    if message ~= nil and message.kind == "cc" and message.controller == 7 then
+        local value = message.value
+        -- The entry marker (controller 0) says the handler ran; the value marker (after the
+        -- command) says the command came back.
+        suhina.send("APC out", suhina.midi.cc(1, 0, 1))
+        local db = "-inf"
+        if value > 0 then db = math.floor((-60 + (value / 127) * 66) * 10) / 10 end
+        local ok, err = suhina.command("track.setVolume", { tracks = { 1 }, db = db }, "apc40-mkii volume")
+        suhina.send("APC out", suhina.midi.cc(1, value, ok and 1 or 0))
+    end
+end)
+"#;
+/// Stand-in MIDI ports: a claimed input port plays into the sink it was opened raw for, and a port that vanished and came back re-enumerates, and its
 /// connection is reopened fresh — the stale one died with the device, and the claim by token
 /// would otherwise keep holding it.
 #[test]

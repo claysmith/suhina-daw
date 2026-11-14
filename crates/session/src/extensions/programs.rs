@@ -93,7 +93,7 @@ pub enum Event {
 
 /// The program's event queue and the signal it is reported on: the supervisor pushes and
 /// notifies, the session drains, and a waiter blocks on the signal rather than a clock.
-type Shared = Arc<(Mutex<VecDeque<Event>>, Condvar)>;
+pub(crate) type Shared = Arc<(Mutex<VecDeque<Event>>, Condvar)>;
 
 /// A running program's handle: the session's half. Dropping it stops the program. Each start
 /// carries a token of its own, so the MIDI router tells a restart's handle from the one it
