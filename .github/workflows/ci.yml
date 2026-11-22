@@ -287,6 +287,8 @@ jobs:
         shell: bash
         env:
           PROFILE: ${{ github.event_name == 'pull_request' && needs.changes.outputs.pack != 'true' && 'ci-pr' || 'ci' }}
+          # TEMPORARY (debug/windows-programs-trace): a trace for the Windows stall.
+          SUHINA_TRACE: ${{ runner.temp }}/suhina-trace.log
         run: |
           run=(cargo nextest run --workspace --profile "$PROFILE" --partition "slice:${{ matrix.partition }}/3")
           if [ "$RUNNER_OS" = Linux ]; then
@@ -294,6 +296,14 @@ jobs:
           else
             "${run[@]}"
           fi
+      # TEMPORARY (debug/windows-programs-trace): the trace of a failed partition.
+      - name: Upload the trace
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: suhina-trace-${{ matrix.os }}-${{ matrix.partition }}
+          path: ${{ runner.temp }}/suhina-trace.log
+          if-no-files-found: ignore
       # The engine's tests again with renderers on 4 threads (ADR 0038 › 16): a render on several
       # threads must equal the render on one, bit for bit. A renderer that finds no free lane of
       # the process's pool (past 16 at once) renders alone, and a block with fewer than 4 chains

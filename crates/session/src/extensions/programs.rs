@@ -899,9 +899,20 @@ impl Link {
         let line = format!("{}\n", message.encode());
         let deadline = Instant::now() + WRITE_TIMEOUT;
         let mut written = 0;
+        // TEMPORARY (debug/windows-programs-trace): a write that had to wait names itself.
+        let started = Instant::now();
+        let mut waited = false;
         while written < line.len() {
             match self.writer.write(&line.as_bytes()[written..]) {
                 Ok(0) => {
+                    if !waited {
+                        waited = true;
+                        suhina_plugins::trace!(
+                            "surface write waits: {} of {} bytes left",
+                            line.len() - written,
+                            line.len()
+                        );
+                    }
                     // A write that took no bytes is no room yet, not a refusal: Windows'
                     // nonblocking pipes answer a full buffer with a zero-byte success rather
                     // than WouldBlock, and a peer that is gone errors instead. The deadline
@@ -914,6 +925,14 @@ impl Link {
                 }
                 Ok(n) => written += n,
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if !waited {
+                        waited = true;
+                        suhina_plugins::trace!(
+                            "surface write waits: {} of {} bytes left (WouldBlock)",
+                            line.len() - written,
+                            line.len()
+                        );
+                    }
                     if Instant::now() >= deadline {
                         self.dead = true;
                         return Err("the runner stopped reading: the write did not complete in time".into());
@@ -925,6 +944,13 @@ impl Link {
                     return Err(format!("cannot write: {e}"));
                 }
             }
+        }
+        if waited {
+            suhina_plugins::trace!(
+                "surface write done: waited {} ms for {} bytes",
+                started.elapsed().as_millis(),
+                line.len()
+            );
         }
         Ok(())
     }

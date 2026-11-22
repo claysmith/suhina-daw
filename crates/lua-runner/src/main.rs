@@ -127,8 +127,15 @@ impl Link {
     /// Sends one message; the newline is the line's end, and it goes out at once — a peer
     /// waiting on it is not kept waiting on a buffer.
     fn send(&mut self, message: &Message) -> Result<(), String> {
+        // TEMPORARY (debug/windows-programs-trace): a blocking write that waited names itself.
+        let started = std::time::Instant::now();
         writeln!(self.writer, "{}", message.encode()).map_err(|e| format!("cannot write: {e}"))?;
-        self.writer.flush().map_err(|e| format!("cannot write: {e}"))
+        self.writer.flush().map_err(|e| format!("cannot write: {e}"))?;
+        let spent = started.elapsed();
+        if spent.as_millis() >= 200 {
+            trace!("runner write waited {} ms", spent.as_millis());
+        }
+        Ok(())
     }
 
     /// The next line, within the protocol's line cap; `None` when the peer closed cleanly.
